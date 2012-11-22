@@ -1,0 +1,138 @@
+<?php
+
+/**
+ * @file
+ * Installation file for GS Special Issues module.
+ */
+
+/**
+ * Implementation hook_schema().
+ */
+function gs_special_issues_schema() {
+  $schema = array();
+  
+  $schema['gs_special_issues_bov_winners'] = array(
+    'description' => 'Contains all BoV winner details.',
+    'fields' => array(
+      'wid' => array(
+        'description' => 'The unique identifier of winner.',
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'name' => array(
+        'description' => 'The name of winner.',
+        'type' => 'varchar',
+        'length' => '255',
+        'not null' => FALSE,
+      ),
+      'address' => array(
+        'description' => 'The street address of winner.',
+        'type' => 'varchar',
+        'length' => '255',
+        'not null' => FALSE,
+      ),
+      'phone' => array(
+        'description' => 'The phone number of winner.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => FALSE,
+      ),
+      'link' => array(
+        'description' => 'Where the winner should link to.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => FALSE,
+      ),
+      'year' => array(
+        'description' => 'The year won.',
+        'type' => 'int',
+        'length' => 4,
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'category' => array(
+        'description' => 'The uid of category won.',
+        'type' => 'int',
+        'length' => 10,
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'group' => array(
+        'description' => 'The uid of grouping won.',
+        'type' => 'int',
+        'length' => 10,
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'lid' => array(
+        'description' => 'The listing identifier for winner if one exists.',
+        'type' => 'int',
+        'length' => 10,
+        'unsigned' => TRUE,
+        'not null' => FALSE,
+      ),
+      'type' => array(
+        'description' => 'The type of listing the lid is for.',
+        'type' => 'varchar',
+        'length' => 32,
+        'not null' => FALSE,
+      ),
+    ),
+    'primary key' => array('wid'),
+    'indexes' => array(
+      'wid' => array('wid'),
+      'category_year' => array('category', 'year'),
+      'group_year' => array('group', 'year'),
+      'year' => array('year'),
+      'listing_type' => array('lid', 'type'),
+    ),
+  );
+  
+  $schema['gs_special_issues_bov_categories'] = array(
+    'description' => 'Contains all BoV categories.',
+    'fields' => array(
+      'cid' => array(
+        'description' => 'The unique identifier of category.',
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'value' => array(
+        'description' => 'The category value.',
+        'type' => 'varchar',
+        'length' => '255',
+        'not null' => FALSE,
+      ),
+    ),
+    'primary key' => array('cid'),
+    'indexes' => array(
+      'cid' => array('cid'),
+    )
+  );
+  
+  $schema['gs_special_issues_bov_groupings'] = array(
+    'description' => 'Contains all BoV category groupings.',
+    'fields' => array(
+      'gid' => array(
+        'description' => 'The unique identifier of grouping.',
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'value' => array(
+        'description' => 'The grouping value.',
+        'type' => 'varchar',
+        'length' => '255',
+        'not null' => FALSE,
+      ),
+    ),
+    'primary key' => array('gid'),
+    'indexes' => array(
+      'gid' => array('gid'),
+    )
+  );
+}

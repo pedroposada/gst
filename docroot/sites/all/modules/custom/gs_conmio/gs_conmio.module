@@ -86,14 +86,14 @@ function gs_conmio_menu() {
     'title' => 'Legacy Comments RSS Feed Redirect',
     'page callback' => 'gs_conmio_redirect',
     'page arguments' => array(3, 4),
-    'access callback' => TRUE, // TRUE for now until _gs_conmio_apiaccess is ready to be tested.
+    'access callback' => '_gs_conmio_apiaccess',
     'type' => MENU_CALLBACK,
   );
   $items['timeout/rss/export/article/%'] = array(
     'title' => 'Legacy Single Article RSS Feed Redirect',
     'page callback' => 'gs_conmio_redirect',
     'page arguments' => array(3, 4),
-    'access callback' => TRUE, // TRUE for now until _gs_conmio_apiaccess is ready to be tested.
+    'access callback' => '_gs_conmio_apiaccess',
     'type' => MENU_CALLBACK,
   );
   
@@ -122,7 +122,7 @@ function gs_conmio_menu() {
  */ 
 function gs_conmio_apijson($type) {
   // debug
-  gs_conmio_log('gs_conmio', "$type REQUEST in gs_conmio_apijson <pre>".print_r($_REQUEST,1)."</pre>");
+  //gs_conmio_log('gs_conmio', "$type REQUEST in gs_conmio_apijson <pre>" . var_export($_REQUEST, TRUE) . "</pre>");
   $response = array('success' => FALSE, 'errors' => array());
   
   switch ($type) {
@@ -137,7 +137,7 @@ function gs_conmio_apijson($type) {
         ),
         'title' => array(
           'name'=>'title',
-          'error'=>'You must provide a headline.',
+          'error'=>'You must provide a title.',
         ),
         'location' => array(
           'name' => 'field_where_did_you_see_this_per',
@@ -145,7 +145,7 @@ function gs_conmio_apijson($type) {
         ),
         'description' => array(
           'name' => 'body',
-          'error' => 'You must provide a description.',
+          'error' => 'You must provide a description of you saw.',
         ),
         'i_am_gender' => array(
           'name' => 'field_i_am_a',
@@ -157,7 +157,7 @@ function gs_conmio_apijson($type) {
         ),
         'date' => array(
           'name' => 'field_what_date_did_you_see_them',
-          'error' => 'Date is required.',
+          'error' => 'You must provide a valid date.',
         ),
       );
       _gs_conmio_createnode($mappings, 'i_saw_you', $_REQUEST, $response);
@@ -243,11 +243,13 @@ function gs_conmio_apijson($type) {
     // User logged in to mobile:
     // curl -d "uid=546&comment=i watch the cat&nid=30345&ip_address=1.2.3.4" http://www.straight.com/api/comment
     case 'comment':
-      foreach (array('uid','author','comment','nid','ip_address') as $key) {
-        isset($_POST[$key]) ? $VALS[$key] = $_POST[$key] : $VALS[$key] = NULL;
+      foreach (array('uid', 'author', 'comment', 'nid', 'ip_address') as $key) {
+        // We use empty() to check because Conmio passes over empty strings which returns
+        // TRUE when you check with isset()
+        !empty($_REQUEST[$key]) ? $VALS[$key] = $_REQUEST[$key] : $VALS[$key] = NULL;
       }
       // if not logged in and no name...
-      if (!isset($VALS['uid'],$VALS['author'])) {
+      if (!isset($VALS['uid']) && !isset($VALS['author'])) {
         $response['errors'][] = "Please enter your name.";
       }
       // if attempting to comment without being logged in...
@@ -255,10 +257,11 @@ function gs_conmio_apijson($type) {
         $response['errors'][] = "That name is taken by a registered user. Please log in if you are this user.";
       }
       // if commenting while logged in, check that user exists
-      if (isset($VALS['uid']) && $account = user_load($VALS['uid'])) {
-        if (!$account->uid) {
-          $response['errors'][] = "User not found.";
-        }
+      // TODO: This needs to be secured. I can spoof myself to be any user and post a comment.
+      //       It's more secure now with the client IP check during the API callback,
+      //       but there is still a 0.1% that someone can spoof that too.
+      if (isset($VALS['uid']) && !($account = user_load($VALS['uid']))) {
+         $response['errors'][] = "User not found.";
       }
       // don't allow empty comments...
       if (empty($VALS['comment'])) {
@@ -336,7 +339,7 @@ function gs_conmio_apijson($type) {
  */
 function gs_conmio_rss($type, $search = null) {
   // debug
-  gs_conmio_log('gs_conmio', "$type REQUEST in gs_conmio_rss <pre>".print_r($_REQUEST,1)."</pre>");
+  //gs_conmio_log('gs_conmio', "$type REQUEST in gs_conmio_rss <pre>".print_r($_REQUEST,1)."</pre>");
   $rss_output = $node_type_human = '';
   
   switch ($type) {
@@ -406,6 +409,12 @@ function gs_conmio_rss($type, $search = null) {
   gs_conmio_rss_output($channel, $rss_output);
 }
 
+
+/**
+ * Callback for 
+ *    timeout/rss/export/comments/%
+ *    timeout/rss/export/article/%
+ */
 function gs_conmio_redirect($type, $id) {
   switch ($type) {
     case 'article':
@@ -425,9 +434,12 @@ function gs_conmio_redirect($type, $id) {
  * authenticate request
  */
 function _gs_conmio_apiaccess() {
-  // return $_SERVER['HTTP_HOST'] == ;
+  if (is_conmio_host()) {
+    return TRUE;
+  }
   
-  return TRUE;
+  gs_conmio_log('gs_conmio', 'Conmio API access by ' . get_ip_address() . ' and FAILED <br /><pre>' . print_r($_SERVER ,TRUE) . '</pre>');
+  return FALSE;
 }
 
 /***************************************************
@@ -456,7 +468,7 @@ function _gs_conmio_createnode($mappings, $type, $source, &$response) {
   $node->language = LANGUAGE_NONE;
   // fill in and validate node values
   foreach ($mappings as $key => $value) {
-    if (isset($source[$key])) {
+    if (!empty($source[$key])) {
       switch ($value['name']) {
         case 'body':
           $node->{$value['name']}[$node->language][0]['value']   = check_plain($source[$key]);
@@ -510,8 +522,8 @@ function _gs_conmio_createnode($mappings, $type, $source, &$response) {
     }
   }
   // debug
-  gs_conmio_log('gs_conmio', "$type REQUEST <pre>".print_r($source,1)."</pre>");
-  gs_conmio_log('gs_conmio', "$type node <pre>".print_r($node,1)."</pre>");
+  //gs_conmio_log('gs_conmio', "$type REQUEST <pre>" . print_r($source, 1) . "</pre>");
+  //gs_conmio_log('gs_conmio', "$type node <pre>" . print_r($node, 1) . "</pre>");
 }
 
 /**
@@ -631,21 +643,32 @@ function gs_conmio_contestsubmit(&$response, $VALUES = NULL) {
   $user_id = 0;
   $webform_node_id = (isset($VALUES['multiformid']) ? $VALUES['multiformid'] : 0);
   $webform_vals = (isset($VALUES['multiforms_view']) ? $VALUES['multiforms_view'] : NULL);
-  if ($node = node_load($webform_node_id)) {
+  
+  if ($node = webform_menu_load($webform_node_id)) {
     // load webform components
     module_load_include('inc', 'webform', 'includes/webform.submissions');
+    
     $submitted = array();
+    
     foreach ($node->webform['components'] as $cid => $component) {
       if (isset($webform_vals[$cid]) && !empty($webform_vals[$cid])) {
-        $submitted[$cid] = filter_xss($webform_vals[$cid]);  
+      $valid = _validate_field($webform_vals[$cid], $component['type']);
+        if ($valid) {
+          $submitted[$cid] = filter_xss($valid);
+        }
+        else {
+          $response['errors'][] = "{$component['name']} is invalid.";
+        }
       } elseif ($component['mandatory']) {
-        $response['errors'][] = "{$component['name']} is required.";  
+        $response['errors'][] = "{$component['name']} is required."; 
       }
+      
       // check for consent box
       if (isset($VALUES['add_to_newsletter']) && $VALUES['add_to_newsletter'] && ($component['type'] == 'consent')) {
         $submitted[$cid] = 1;
       }
     }
+    
     // Create a new submission object.
     if (!count($response['errors'])) {
       $submission = (object) array(
@@ -656,28 +679,115 @@ function gs_conmio_contestsubmit(&$response, $VALUES = NULL) {
         'is_draft' => 0,
         'data' => webform_submission_data($node, $submitted),
       );
+      //dsm($submission, 'submission');
       if ($sid = webform_submission_insert($node, $submission)) {
         $response['success'] = TRUE; 
-      } else {
+      }
+      else {
         $response['errors'][] = "There was a problem with this operation. Please try again later.";
       }
     }
-  } else {
+  }
+  else {
     $response['errors'][] = "This contest doesn't exist.";
   }
-  gs_conmio_log('gs_conmio', 'contest $form_state <pre>'.print_r($response,1).'</pre>');
+  if (!$response['success']) {
+    gs_conmio_log('gs_conmio', 'Contest Submission Failed <pre>' . print_r(array('values' => $VALUES, 'response' => $response), 1) . '</pre>');
+  }
 }
 
 /**
  * Custom logging function for debugging
- * Drush command to enable log: dursh vset gs_conmio_log 1
- * Drush command to disable log: dursh vset gs_conmio_log 0
+ * Drush command to enable log: drush vset gs_conmio_log 1
+ * Drush command to disable log: drush vset gs_conmio_log 0
  * Set this to 0 in production.
  * 
  * @param see watchdog()
  */
 function gs_conmio_log($type, $message, $variables = array(), $severity = WATCHDOG_NOTICE, $link = NULL) {
-  if (variable_get('gs_conmio_log',0)) {
+  if (variable_get('gs_conmio_log', 0)) {
     watchdog($type, $message, $variables, $severity, $link);
+  }
+}
+
+/**
+ * Validate the field
+ *
+ * @param $value
+ *     The field value.
+ * @param $type
+ *     The webform component type.
+ *
+ * @return string
+ *     Returns the validated value or FALSE if it fails.
+ */
+function _validate_field($value = '', $type = '') {
+  switch ($type) {
+    case 'email':
+      if (valid_email_address(trim($value))) {
+        return trim($value);
+      }
+      else {
+        return FALSE;
+      }
+      break;
+    case 'phone_number':
+      if (preg_match('/^(?:\+?1[-. ]?)?\(?(\d{3})\)?[-. ]?(\d{3})[-. ]?(\d{4})[-. ]?(?:(?:x|ext) ?(\d+))?$/i', $value, $matches)) {
+        return '(' . $matches[1] . ') ' . $matches[2] . '-' . $matches[3] . (isset($matches[4]) ? ' x' . $matches[4] : '');
+      }
+      else {
+        return FALSE;
+      }
+      break;
+    default:
+      return $value;
+  }
+}
+
+/**
+ * Check if the client is one of Conmio's hosts.
+ */
+function is_conmio_host() {
+  $ip = get_ip_address();
+  $allow = FALSE;
+  $allowed_hosts = array(
+    '127.0.0.1', //localhost
+    '174.129.4.23', //m.straight.com
+    '23.21.250.33', //staging
+  );
+  
+  foreach ($allowed_hosts as $host) {
+    if (preg_match('/^' . $host . '/', $ip, $result)) {
+      $allow = TRUE;
+    }
+  }
+  
+  if (!$allow) {
+    gs_conmio_log('gs_conmio', 'Conmio Feed Accessed by ' . $ip . ' and FAILED ' . '<br /><pre>' . print_r($_SERVER ,TRUE) . '</pre>');
+  }
+  return $allow;
+}
+
+/**
+ * Returns the IP address of the client server. 
+ */
+function get_ip_address(){
+  $ip_variables = array(
+    'AH_Client_IP', // Acquia variables for the client IP
+    'HTTP_X_AH_CLIENT_IP', // Acquia variables for the client IP
+    'HTTP_X_FORWARDED_FOR',
+    'REMOTE_ADDR',
+  );
+  
+  foreach ($ip_variables as $key){
+    if (array_key_exists($key, $_SERVER)){
+      foreach (explode(',', $_SERVER[$key]) as $ip){
+        $ip = trim($ip); // just to be safe
+        
+        if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4 || FILTER_FLAG_NO_PRIV_RANGE || FILTER_FLAG_NO_RES_RANGE) !== false){
+          return $ip;
+        }
+      }
+    }
   }
 }

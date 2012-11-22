@@ -39,6 +39,23 @@ function gs_conmio_views_pre_render(&$view) {
 }
 
 /**
+ * Implements hook_views_plugins
+ */
+function gs_conmio_views_plugins() {
+  return array(   
+    'access' => array(
+      'conmio' => array(
+        'title' => t('Conmio'),
+        'help' => t('Access will be granted to conmio host addresses only.'),
+        'handler' => 'views_plugin_access_conmio',
+        'path' => drupal_get_path('module', 'gs_conmio') . '/views',
+        'help topic' => 'access-conmio',
+      ),
+    ),
+  );
+}
+
+/**
  * Implements hook_views_plugins_alter
  */
 function gs_conmio_views_plugins_alter(&$plugins) {
@@ -272,9 +289,11 @@ function gs_conmio_preprocess_views_view_row_rss(&$vars) {
     $vars['item_elements'] = empty($row->elements) ? '' : format_xml_elements($row->elements);
     
     if ($vars['id'] == 1) {
-      //dsm($row, 'row');
-      //dsm($node, 'node');
-      //dsm($vars, 'vars');
+      /*dsm(array(
+        'row' => $row,
+        'node' => $node,
+        'vars' => $vars,
+      ));*/
     }
   }
 }

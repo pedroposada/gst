@@ -78,45 +78,6 @@ function gs_classifieds_init() {
       exit();
     }
   }
-//  if ($node = menu_get_object()) {
-//    switch ($node->type) {
-//      case 'content_classified_ad':
-//        $taxonomy_term = taxonomy_term_load($node->field_class_tax['und'][0]['tid']);
-//        if($node->field_class_tax['und'][0]['tid'] == 739 || $node->field_class_tax['und'][0]['tid'] == 740 || strlen(strstr($taxonomy_term->name, "Adult")) > 0){
-//          if (!gs_classifieds_get_adult_access()){
-//        watchdog('Classifieds', t("Accessed adult node: " . arg(1) . " and adult session variable not set. Redirecting to: adult-services-disclaimer?dest=node/" . arg(1)));
-//            // We're not allowed to display adult content so goto disclaimer
-//            /*drupal_goto($path = 'adult-services-disclaimer', $query = array('query'=>array(
-//              'dest'=> check_plain($_GET['q']),
-//            )));*/
-//            $destination = drupal_parse_url(check_plain($_GET['q']));
-//            $path = 'adult-services-disclaimer';    
-//
-//            $options = array('absolute' => TRUE, 'query' => array('dest' => $destination['path']));
-//            $url = url($path, $options);
-//            $http_response_code = 302;
-//            header('Location: ' . $url, TRUE, $http_response_code);
-//            drupal_exit($url);
-//
-//          } 
-//        }
-//    break;
-//    }
-//  }
-//  
-//  $tmp = arg(1);
-//  $term = new stdClass();
-//  if($tmp == 'term'){
-//    $term = taxonomy_term_load(arg(2));
-//  if($term->tid == 673 || $term->tid == 674 || strlen(strstr($term->name, "Adult")) > 0){  // The 2nd arg contains the word "Adult"
-//      if (!gs_classifieds_get_adult_access()) {
-//        // We're not allowed to display adult content so goto disclaimer
-//        drupal_goto($path = 'adult-services-disclaimer', $query = array('query'=>array(
-//          'dest'=> check_plain($_GET['q']),
-//        )));
-//      } 
-//    }
-//  }
 }
 
 /**
@@ -303,6 +264,59 @@ function gs_classifieds_views_query_alter(&$view, &$query) {
     // We were not sure how and where this content should be chosen to be filtered.
     //$query->add_where(1, 'field_data_field_class_tax.field_class_tax_tid', array(673, 674), 'NOT IN');
   }
+  
+  if ($view->name == 'classifieds_panels' || $view->name == 'classifieds_category') {
+    // The following code is to address classified ads where no results are returned if the expiration
+    // has passed and no new classifieds have been uploaded. 
+    $current = "SELECT
+                  * 
+                FROM
+                  {field_data_field_expiry_date} 
+                WHERE 
+                  bundle = 'content_classified_ad' AND field_expiry_date_value > now()";
+              
+    $past    = "SELECT 
+                  * 
+                FROM 
+                  {field_data_field_expiry_date} 
+                WHERE 
+                  bundle = 'content_classified_ad' AND field_expiry_date_value < now()
+                ORDER BY field_expiry_date_value DESC";
+    
+    // First check if there are current classifieds ads available for display.
+    if (!db_query($current)->fetchObject()) {
+      // If there are none available, we query the most recent classifieds.
+      $result = db_query($past)->fetchObject();
+      if (isset($result->field_expiry_date_value)) {
+        // Repurpose the expiry date into an ISO date format for the view query.
+        $date = explode(' ', $result->field_expiry_date_value);
+        $date = trim($date[0]) . 'T00:00:00';
+      }
+    }
+    
+    // We loop through all the WHERE conditions to look for field_activation_date_value AND field_expiry_date_value
+    foreach ($query->where as &$where) {
+      if (is_array($where['conditions'])) {
+        foreach ($where['conditions'] as $key => &$condition) {
+          if (preg_match('/field_data_field_activation_date.field_activation_date_value/', $condition['field']) || preg_match('/field_data_field_expiry_date.field_expiry_date_value/', $condition['field'])) {
+            // TODO: Restructure Classified Ads Content Type to better work with dates.
+            // The field_expiry_date and field_activation_date are configured in a buggy way when working with Views.
+            // Views will adjust for the field's time zone when you filter by this field. So Views will be comparing
+            // an adjusted Time, to a non-adjusted Time. As a patch, I strip out the portion of the query that does this.
+            $condition['field'] = preg_replace('/ADDTIME\((.*), SEC_TO_TIME\((?:.*)\)\)/', '$1', $condition['field']);
+            
+            // If there are no current classified ads, the filter value is replaced with the date of the most recent ad.
+            if (isset($date)) {
+              reset($condition['value']);
+              // On pages where multiple Panes of the same View are used, the key value becomes unique for each.
+              // If the argument is ever changed to accept multiple. This line needs to be updated to handle that.
+              $condition['value'][key($condition['value'])] = $date;
+            }
+          }
+        }
+      }
+    }
+  }
 }
 
 /*************************************************************
@@ -446,51 +460,6 @@ function gs_classifieds_disclaimer_form_submit($form, &$form_state) {
   }
   
   $form_state['redirect'] = $redirect;
-  // Submission logic.
-//  if($form_state['clicked_button']['#value'] == "Agree"){
-//    gs_classifieds_set_adult_session();
-//    gs_classifieds_set_no_adult_search_session(0);
-//  
-//    if (isset($_GET['dest'])) {
-//      $destination = drupal_parse_url($_GET['dest']);
-//      $path = $destination['path'];    
-//      if ($_GET['dest'] == 'classifieds/search') {// if coming from search page, add search parameters
-//        drupal_goto($path, $query = array('query'=>array(
-//          'body_value' => $_GET['body_value'], 'field_class_tax_tid' => $_GET['field_class_tax_tid'],
-//        )));  
-//      }
-//
-//      $options = array('absolute' => TRUE);
-//      $url = url($path, $options);
-//      $http_response_code = 302;
-//      header('Location: ' . $url, TRUE, $http_response_code);
-//      drupal_exit($url);
-//    }
-//    else{
-//      $path = "classifieds/adult";    
-//      $options = array('absolute' => TRUE);
-//      $url = url($path, $options);
-//      $http_response_code = 302;
-//      header('Location: ' . $url, TRUE, $http_response_code);
-//      drupal_exit($url);     
-//    }
-//  } 
-//  else {
-//    gs_classifieds_set_no_adult_search_session(1);
-//    if ($_GET['dest'] == 'classifieds/search') {// if coming from search page, add search parameters
-//      $destination = drupal_parse_url($_GET['dest']);
-//      $path = $destination['path'];  
-//      drupal_goto($path, $query = array('query'=>array(
-//          'body_value' => $_GET['body_value'], 'field_class_tax_tid' => $_GET['field_class_tax_tid'],
-//        )));  
-//    }
-//    $path = "";    
-//    $options = array('absolute' => TRUE);
-//    $url = url($path, $options);
-//    $http_response_code = 302;
-//    header('Location: ' . $url, TRUE, $http_response_code);
-//    drupal_exit($url);     
-//  }
 }
 
 /*************************************************************
@@ -515,31 +484,6 @@ function gs_classifieds_admin_dispatch() {
       break;
   }
 }
-
-/**
- * Disclaimer page
- * returns disclaimer text
- */
-/*function gs_classifieds_get_disclaimer_text(){
-  $output = "<div class='adultdisclaimer'>";
-  $output .= "<p><b>WARNING</b> - This area of the www.straight.com website may contain nudity and sexuality, and is intended for a mature person. It must not to be accessed by anyone under the age of 18 (or the age of consent in the jurisdiction from which it is being accessed).</p>
-    <p><b>YOU MUST AGREE TO THE FOLLOWING BEFORE ENTERING!</b></p>
-    <ul> 
-    <li>I am over age 18 years old, and I have the legal right to possess adult material in my community.</li> 
-    <li>I will not permit any person(s) under 18 years of age to have access to any of the materials contained in this site.</li> 
-    <li>I am familiar with the rules governing the viewing or possession of sexually oriented materials as defined by my local jurisdiction.</li>
-    <li>I agree that responsibility for the editorial content, and/or the content of advertisers' pages do not necessarily reflect the opinions of the  publisher of www.straight.com.</li> 
-    <li>I am voluntarily choosing to access this site, because I want to view, read and/or hear the various materials which are available. I do not find images of nude adults, adults engaged in sexual acts, or other sexual material to be offensive or objectionable.</li> 
-    <li>I will exit from this site immediately if I am in any way offended by the sexual nature of any material.</li>
-    <li>I understand and agree to abide by the standards and laws of my community. By logging on and viewing any part of this Web site, I agree that I shall not hold the owners of the Web site or its employees responsible for any materials located on the site.</li>
-    <li>This entire www.straight.com website, including it's code, images, logos, and names are protected by copyright, and any infringement of said copyright will be prosecuted to the fullest extent of the law. The creators of this Web site along with the services provided are released of all liabilities.</li>
-    </ul>";
-  $output .= "<p>Click 'Agree' to indicate that you abide by these terms and wish to enter the Adult Services section of the site.</p>";
-  $output .= "<p>If you do not agree to these terms, click 'Disagree' to go back to the Straight.com homepage.</p>";
-  $output .= "</div>";
-    
-  return $output;
-}*/
  
 /**
  * Returns html of classifieds tab
@@ -583,22 +527,61 @@ function gs_classifieds_tabs() {
  */
 function gs_classifieds_homepage() {
   $terms = taxonomy_get_tree(6, 0, 1);
+  
   $count_terms = 0;
- 
-  foreach ($terms as $key => $term) {//Remove terms which do not contain any nodes
-  $count_terms++;
+  
+  /* ==================================================================================
+   * The following patch is intended for the the homepage classifieds block so that it
+   * will return results from the most recent import if no current ads are available.
+   * Rather than reworking how it works, I just redetermine the time the query later needs
+   * to check to do it's thing.
+   */
+  $current = "SELECT
+                * 
+              FROM
+                {field_data_field_expiry_date} 
+              WHERE 
+                bundle = 'content_classified_ad' AND field_expiry_date_value > now()";
+            
+  $past    = "SELECT 
+                * 
+              FROM 
+                {field_data_field_expiry_date} 
+              WHERE 
+                bundle = 'content_classified_ad' AND field_expiry_date_value < now()
+              ORDER BY field_expiry_date_value DESC";
+  
+  // First check if there are current classifieds ads available for display.
+  if (!db_query($current)->fetchObject()) {
+    // If there are none available, we query the most recent classifieds.
+    $recent = db_query($past)->fetchObject();
+    if (isset($recent->field_expiry_date_value)) {
+      // Repurpose the expiry date back to midnight to allow for easier comparison later on.
+      $date = explode(' ', $recent->field_expiry_date_value);
+      $date = gs_classifieds_get_timestamp($date[0] . ' 00:00:00');
+    }
+    else {
+      $date = time();
+    }
+  }
+  // ==================================================================================
+  
+  //Remove terms which do not contain any nodes
+  foreach ($terms as $key => $term) {
+    $count_terms++;
     $nodes_with_tax = taxonomy_select_nodes($term->tid);
-  if (empty($nodes_with_tax)){
+    
+    if (empty($nodes_with_tax)){
       unset($terms[$key]);
     }
     else {
       $empty = TRUE;
-    foreach($nodes_with_tax as $key2 => $value) {
+      foreach($nodes_with_tax as $key2 => $value) {
         $result = db_query("SELECT field_data_field_expiry_date.field_expiry_date_value, field_data_field_activation_date.field_activation_date_value 
-          FROM {field_data_field_expiry_date} JOIN {field_data_field_activation_date} ON field_data_field_expiry_date.entity_id = field_data_field_activation_date.entity_id 
-          WHERE field_data_field_expiry_date.entity_id = :entityid", array(':entityid' => $value));
+                            FROM {field_data_field_expiry_date} JOIN {field_data_field_activation_date} ON field_data_field_expiry_date.entity_id = field_data_field_activation_date.entity_id 
+                            WHERE field_data_field_expiry_date.entity_id = :entityid", array(':entityid' => $value));
         foreach ($result as $record) {
-      if(gs_classifieds_get_timestamp($record->field_activation_date_value) < time() && gs_classifieds_get_timestamp($record->field_expiry_date_value) > time()) {
+          if(gs_classifieds_get_timestamp($record->field_activation_date_value) < $date && gs_classifieds_get_timestamp($record->field_expiry_date_value) > $date) {
             $empty = FALSE;
           }
         }
@@ -606,23 +589,27 @@ function gs_classifieds_homepage() {
       if($empty) {unset($terms[$key]);}
     }
   }
+  
   $count = 0; $col = 0;
   $num_rows = ceil($count_terms / 3);
   $output = '<h2><a href="/classifieds">Classifieds</a></h2>';
   $output .= '<table class="views-view-grid cols-3"><tbody>';
+  
   foreach ($terms as $key => $term) {
-  $col = $count % 3; 
-  if ($col == 0) {
-    $row = ceil(($count + 1)/ 3);
-    $output .= '<tr class="row-' . $row. '">';
+    $col = $count % 3; 
+    if ($col == 0) {
+      $row = ceil(($count + 1)/ 3);
+      $output .= '<tr class="row-' . $row. '">';
+    }
+    $output .= '<td class="col-' . $col . '">' . l($term->name, 'taxonomy/term/' . $term->tid) . '</td>';
+    if ($col == 2) {
+       $output .= '</tr>';
+    }
+    $count++;
   }
-  $output .= '<td class="col-' . $col . '">' . l($term->name, 'taxonomy/term/' . $term->tid) . '</td>';
-  if ($col == 2) {
-    $output .= '</tr>';
-  }
-  $count++;
-  }
+  
   if ($col != 3) { $output .= '</tr>'; }
+  
   $output .= '</tbody></table>';
   $iconPath = "/" . drupal_get_path('module', 'gs_classifieds') . "/images/";
   $output .= '<div id="classified-block-footer"><a href="https://georgiastraight.onlineads.advpubtech.com/">PLACE A CLASSIFIED AD &raquo;</a><div class="classifieds-logo"><img class="print-logo" src="' . $iconPath . '/straight_com-logo-small.png" alt="Straight.com"/></div></div>';
@@ -646,6 +633,42 @@ function gs_classifieds_get_tray_views($active) {
   if ($active_term->tid == 739 || $active_term->tid == 740 || strlen(strstr($active_term->name, "Adult")) > 0) {
     $adult = 1;
   }
+	
+	/* ==================================================================================
+   * The following patch is intended for the the homepage classifieds block so that it
+   * will return results from the most recent import if no current ads are available.
+   * Rather than reworking how it works, I just redetermine the time the query later needs
+   * to check to do it's thing.
+   */
+  $current = "SELECT
+                * 
+              FROM
+                {field_data_field_expiry_date} 
+              WHERE 
+                bundle = 'content_classified_ad' AND field_expiry_date_value > now()";
+            
+  $past    = "SELECT 
+                * 
+              FROM 
+                {field_data_field_expiry_date} 
+              WHERE 
+                bundle = 'content_classified_ad' AND field_expiry_date_value < now()
+              ORDER BY field_expiry_date_value DESC";
+  
+  // First check if there are current classifieds ads available for display.
+  if (!db_query($current)->fetchObject()) {
+    // If there are none available, we query the most recent classifieds.
+    $recent = db_query($past)->fetchObject();
+    if (isset($recent->field_expiry_date_value)) {
+      // Repurpose the expiry date back to midnight to allow for easier comparison later on.
+      $date = explode(' ', $recent->field_expiry_date_value);
+      $date = gs_classifieds_get_timestamp($date[0] . ' 00:00:00');
+    }
+    else {
+      $date = time();
+    }
+  }
+  // ==================================================================================
 
   foreach ($terms as $key => $term) {//Remove terms which do not contain any nodes
     $nodes_with_tax = taxonomy_select_nodes($term->tid);
@@ -659,7 +682,7 @@ function gs_classifieds_get_tray_views($active) {
           FROM {field_data_field_expiry_date} JOIN {field_data_field_activation_date} ON field_data_field_expiry_date.entity_id = field_data_field_activation_date.entity_id 
           WHERE field_data_field_expiry_date.entity_id = :entityid", array(':entityid' => $value));
         foreach ($result as $record) {
-          if(gs_classifieds_get_timestamp($record->field_activation_date_value) < time() && gs_classifieds_get_timestamp($record->field_expiry_date_value) > time()) {
+          if(gs_classifieds_get_timestamp($record->field_activation_date_value) < $date && gs_classifieds_get_timestamp($record->field_expiry_date_value) > $date) {
             $empty = FALSE; 
           }
         }
@@ -756,10 +779,17 @@ function gs_classifieds_check_prohibited(){
   if ($path === 'classifieds/adult') {
     return TRUE;
   }
-    
+  
   if ($term = menu_get_object('taxonomy_term', 2)) {
-    foreach ($term->parent as $value) {
-      if (in_array($value, $prohibited_terms)) {
+    if (isset($term->parent)) {
+      foreach ($term->parent as $value) {
+        if (in_array($value, $prohibited_terms)) {
+          return TRUE;
+        }
+      }
+    }
+    else {
+      if (in_array($term->tid, $prohibited_terms)) {
         return TRUE;
       }
     }
@@ -808,64 +838,7 @@ function gs_classifieds_get_adult_access(){
   }
   
   return FALSE;
-//  module_load_include('inc', 'gs_classifieds', 'gs_classifieds.config');
-//  if (!isset($_SESSION['adult']['#value'])) {
-//    return FALSE;
-//  }
-//  elseif ((time() - $_SESSION['adult']['#value']) > GS_TID_ADULT) {
-//    return FALSE;
-//  }
-//  else {
-//    gs_classifieds_set_adult_session();
-//    gs_classifieds_set_no_adult_search_session(0);
-//    return TRUE;
-//  }
-} 
-
-/**
- * If adult search is set or not
- *
- * return 1 if not set or timmed out
- * return 2 if search without adult content
- * return 3 if adult content is allowed
- *
- */
-/*function gs_classifieds_get_adult_search_access(){
-  module_load_include('inc', 'gs_classifieds', 'gs_classifieds.config');
-  if (!isset($_SESSION['adult']['adult_search']['#value'])) {
-    return 1;
-  }
-  elseif ((time() - $_SESSION['adult']['adult_search']['#value']) > GS_TID_ADULT) {
-    return 1;
-  }
-  elseif ($_SESSION['adult']['adult_search']['#access'] == 1) {
-    gs_classifieds_set_no_adult_search_session(1);
-    return 2;
-  }
-  else {
-    gs_classifieds_set_adult_session();
-    gs_classifieds_set_no_adult_search_session(0);
-    return 3;
-  } 
-}*/
-
-/**
- * Set adult session
- */
-/*function gs_classifieds_set_adult_session(){
-  $_SESSION['adult'] = array();
-  $_SESSION['adult']['#value'] = time();
-}*/
-
-/**
- * Set adult search session
- * set defult to no adult search
- */
-/*function gs_classifieds_set_no_adult_search_session($value = 1){
-  $_SESSION['adult']['adult_search'] = array();
-  $_SESSION['adult']['adult_search']['#value'] = time();
-  $_SESSION['adult']['adult_search']['#access'] = $value;
-}*/
+}
 
 /**
  * Disclaimer page
@@ -888,25 +861,3 @@ function gs_classifieds_title_category() {
   } 
   return '<h2 id="classifieds-category-title">' . $term->name . '</h2>';
 }
-
-/**
- * Generates breadcrumb for classifieds node page
- * This function is no longer in use, handling for breadcrumb is done directly in gs_breadcrumb.
- */
-/*function gs_classifieds_node_breadcrumb($node) {
-  $breadcrumb = array();
-  // Generate the home breadcrumb.
-  $breadcrumb[] = l(t('Home'), NULL);
-   
-  if (isset($node->field_class_tax['und'][0]['taxonomy_term']->parent[0])) {
-    $parent = taxonomy_term_load($node->field_class_tax['und'][0]['taxonomy_term']->parent[0]);
-    // Generate the parent taxonomy breadcrumb.
-    $breadcrumb[] = l($parent->name, 'taxonomy/term/' . $parent->tid);
-  }
-  if (isset($node->field_class_tax['und'][0]['taxonomy_term'])) {
-    // Generate the Child taxonomy breadcrumb.
-    $breadcrumb[] = l($node->field_class_tax['und'][0]['taxonomy_term']->name, 'taxonomy/term/' . $node->field_class_tax['und'][0]['taxonomy_term']->tid, array('attributes' => array('class' => array('active'))));
-  }
-
-  return $breadcrumb;  
-}*/

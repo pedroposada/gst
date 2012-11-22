@@ -10,7 +10,7 @@ function gs_helper_views_query_alter(&$view, &$query) {
   );
   
   if (in_array($view->name, $views_to_remove_cartoons['name']) && in_array($view->current_display, $views_to_remove_cartoons['current_display'])) {
-    if (in_array('Cartoons', $view-args)) {
+    if (in_array('Cartoons', $view->args)) {
       return;
     }
     

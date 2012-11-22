@@ -83,6 +83,11 @@ function gs_helper_permission() {
  * Implements hook_menu_alter()
  */
 function gs_helper_menu_alter(&$items) {
+  if (isset($items['nodequeue/autocomplete'])) {
+    $items['nodequeue/autocomplete']['page callback'] = 'gs_nodequeue_autocomplete';
+    $items['nodequeue/autocomplete']['file path'] = drupal_get_path('module', 'gs_helper');
+    $items['nodequeue/autocomplete']['file'] = 'gs_helper.nodequeue.inc';
+  }
 }
 
 /**
@@ -430,13 +435,17 @@ function gs_helper_theme($existing, $type, $theme, $path) {
   }
   
   $data += array(
-  // image cropper for field media collection
+    // image cropper for field media collection
     'gs_helper_image_cropper' => array(
-      'variables' => array(
-        'fid' => NULL,
-      ),
+      'variables' => array('fid' => NULL),
       'path' => drupal_get_path('module', 'gs_helper') . '/templates',
       'template' => 'gs-helper-image-cropper',
+    ),
+    // export isaw yous in in-design format
+    'gs_helper_isawyou_export' => array(
+      'variables' => array('posts'=>array()),
+      'path' => drupal_get_path('module', 'gs_helper') . '/templates',
+      'template' => 'gs-helper-isawyou-export',
     ),
   );
   
@@ -628,8 +637,28 @@ function gs_helper_date_popup_pre_validate_alter(&$element, &$form_state, &$inpu
  */
 function gs_helper_entity_delete($entity, $type) {
   // fix for VBO bulk entity delete bug - remove reference of entity in node
-  if ($type == 'field_collection_item' && $entity->field_name == "field_mediacollection") {
+  // We also check the path so it only applies to deleting images in a gallery
+  // because it causes unexpected behaviors when deleting nodes.
+  if ($type == 'field_collection_item' && $entity->field_name == "field_mediacollection" && current_path() == 'admin/workbench/content/media') {
     $entity->delete();
+  }
+}
+
+/**
+ * Implements hook_node_presave()
+ */
+function gs_helper_node_presave($node) {
+  if ($node->type == 'i_saw_you' && $node->nid && !$node->original->status) {
+    // make sure title is right length
+    $tweet_text  = text_summary($node->title, 'plain_text', 139); // 139 + empty character = 140 characters allowed in tweets
+    // append short url to message 
+    if (strstr($_SERVER['SERVER_NAME'],'www.straight.com')) {
+      if (module_exists('shorten')) {
+        $tweet_text .= ' ' . shorten_url(url("node/{$node->nid}",array('absolute',TRUE)));
+      }
+    }
+    // send post to twitter
+    _gs_helper_post_tweet($tweet_text);
   }
 }
 
@@ -646,14 +675,21 @@ function gs_helper_workbench_create_alter(&$output) {
   // remove links in Create Content page just for Editors
   global $user;
   foreach ($content as $key => $value) {
-    if (strstr($key,'confession') && in_array('editor', array_values($user->roles))) {
-      unset($content[$key]);
+    // Check to see if $user has the administrator role.
+    if (in_array('administrator', array_values($user->roles))) {
+      break;
     }
-    if (strstr($key,'i saw you') && in_array('editor', array_values($user->roles))) {
-      unset($content[$key]);
-    }
-    if (strstr($key,'page') && in_array('editor', array_values($user->roles))) {
-      unset($content[$key]);
+    // check if user is editor
+    if (in_array('editor', array_values($user->roles))) {
+      if (strstr($key,'confession')) {
+        unset($content[$key]);
+      }
+      if (strstr($key,'i saw you')) {
+        unset($content[$key]);
+      }
+      if (strstr($key,'page')) {
+        unset($content[$key]);
+      }
     }
   }
 
@@ -794,7 +830,7 @@ function gs_helper_form_alter(&$form, &$form_state, $form_id) {
   if (strpos($form_id, 'nodequeue_arrange_subqueue_form_') === 0) {
     if (preg_match('#admin\/workbench\/featured\/sections\/(\d+)\/view#', current_path(), $matches)) {
       $form['actions']['back'] = array(
-        '#markup' => l('Back to Editor\'s Picks','admin/workbench/featured'),
+        '#markup' => l('Back to Section Picks','admin/workbench/featured'),
       );
     }
   }
@@ -806,10 +842,67 @@ function gs_helper_form_article_node_form_alter(&$form, &$form_state, $form_id) 
 }
 /**
  * Implements hook_form_FORM_ID_alter(&$form, &$form_state, $form_id)
+ * All content
  */
 function gs_helper_form_views_form_all_content_page_1_alter(&$form, &$form_state, $form_id) {
   if (isset($form['qids'])) {
+    // second step of process when adding node to nodequeue
+    // make nodequeue multiselect field taller
     $form['qids']['#attributes']['style'] = 'height: 300px';
+  }
+}
+/**
+ * Implements hook_form_FORM_ID_alter(&$form, &$form_state, $form_id) 
+ */
+function gs_helper_form_views_exposed_form_alter(&$form, &$form_state, $form_id) {
+  // views-exposed-form-all-content-page-4
+  // I Saw You admin page
+  if ($form['#id'] == "views-exposed-form-all-content-page-4") {
+    // add submit handler to export 50 most recent nodes
+    $form['export'] = array(
+      '#type' => 'submit',
+      '#value' => t('Export most recent (50)'),
+      '#submit' => array('gs_helper_isawyou_export_submit'),
+    );
+  }
+}
+function gs_helper_isawyou_export_submit($form, &$form_state) {
+  try {
+    // find most recent published i saw you posts
+    $query = new EntityFieldQuery();
+    $query->entityCondition('entity_type', 'node')
+      ->entityCondition('bundle', 'i_saw_you')
+      ->propertyCondition('status', 1)
+      ->propertyOrderBy('created', 'DESC')
+      ->range(0, 50);
+    $result = $query->execute();
+    if (isset($result['node'])) {
+      $nodes = entity_load('node',array_keys($result['node']));
+      $posts = array();
+      foreach ($nodes as $nid => $node) {
+        $posts[$nid]['title'] = $node->title;
+        $posts[$nid]['isawa_gender'] = strtr($node->field_i_saw_a['und'][0]['value'],array('Female'=>'WOMAN','Male'=>'MAN'));
+        $posts[$nid]['isawa_char'] = strtr($posts[$nid]['isawa_gender'],array('MAN'=>'s','WOMAN'=>'r'));
+        $posts[$nid]['iama_gender'] = strtr($node->field_i_am_a['und'][0]['value'],array('Female'=>'WOMAN','Male'=>'MAN'));;
+        $posts[$nid]['iama_char'] = strtr($posts[$nid]['iama_gender'],array('MAN'=>'s','WOMAN'=>'r'));;
+        $posts[$nid]['date'] = strtoupper(date('F j, Y',strtotime($node->field_what_date_did_you_see_them['und'][0]['value'])));
+        $posts[$nid]['where'] = $node->field_where_did_you_see_this_per['und'][0]['value'];
+        $posts[$nid]['body'] = $node->body['und'][0]['value'];
+      }
+      if (count($posts)) {
+        // force download of in-design file
+        $filename = "i_saw_you-export-" . date('Y-m-d-H-i-s') . ".txt";
+        drupal_add_http_header('Content-disposition', "attachment; filename=$filename");
+        // use template to format exported list of posts
+        print theme('gs_helper_isawyou_export',array('posts'=>$posts));
+        exit;
+      } else {
+        drupal_set_message("There's nothing to export."); 
+      }
+    }
+  } catch(Exception $e) {
+    watchdog_exception('gs_helper', $e);
+    drupal_set_message("There was an error, please check the logs."); 
   }
 }
 /**
@@ -908,10 +1001,34 @@ function gs_helper_form_comment_form_alter(&$form, &$form_state) {
     $form['field_yourname']['und'][0]['value']['#type'] = 'hidden';
   }
 }
+/**
+ * Implements hook_form_FORM_ID_alter(&$form, &$form_state, $form_id)
+ * nodequeue_arrange_subqueue_form
+ */
+function gs_helper_form_nodequeue_arrange_subqueue_form_alter(&$form, &$form_state, $form_id) {
+  if (isset($form['add']['nid']) && preg_match('/\d+/', $form_id, $match)) {
+    $nodequeue_term_map = _gs_helper_nodequeue_term_map();
+    $terms = array();
+    
+    // Check if the queue is mapped to any terms.
+    if (is_array($nodequeue_term_map[$match[0]])) {
+      foreach ($nodequeue_term_map[$match[0]] as $tid) {
+        $term = taxonomy_term_load($tid);
+        $terms[] = $term->name;
+      }
+    }
+    
+    if (!empty($terms)) {
+      $terms = array_unique($terms);
+      $form['add']['nid']['#field_prefix'] = t('Only content with the following primary topic OR it\'s subtopics can be searched: %terms', array('%terms' => implode(', ', $terms)));
+      $form['add']['#attributes']['class'][] = 'filtered-search';
+    }
+  }
+}
 
 /*************************************************************
-        CALLBACKS
-*************************************************************/
+ *        MENU CALLBACKS
+ *************************************************************/
 
 /**
  * Callback for gs/ajax/image-cropper
@@ -1309,6 +1426,14 @@ function gs_helper_preprocess_page(&$vars) {
     switch (TRUE) {
       case drupal_match_path(current_path(), "node/*/moderation\nnode/*/edit"):
         if (isset($vars['node']) && $vars['node']->type == 'home_page') {
+          // remove diff link
+          drupal_add_js("
+            (function($) {
+              $(document).ready(function() {
+                $('li a[href*=\"/moderation/diff\"]').closest('li').remove();
+              });
+            })(jQuery);
+          ",array('type'=>'inline','scope'=>'header'));
           // unset default tabs
           unset($vars['tabs']['#primary']);
           // set custom tabs
@@ -1382,7 +1507,7 @@ function gs_helper_preprocess_table(&$vars) {
           }
         }
       }
-      
+      // color code messages in status column
       if (isset($row[2]['data'])) {
         if (preg_match('/1 \((.+)\)/is', $row[2]['data'], $match)) {
           // Rename the queue statuses to more human friendly terms.
@@ -1545,8 +1670,8 @@ function gs_helper_preprocess_table(&$vars) {
       }
     }
   }
-  // alter view links in revision moderation page for homepage node type
   if (drupal_match_path(current_path(), "node/*/moderation")) {
+    // alter view links in revision moderation page for homepage node type
     foreach ($vars['rows'] as $key => $value) {
       $str = $vars['rows'][$key]['data']['revision'];
       $pat = '#<a href="/node/(\d+)/revisions/(\d+)/view">view</a>#';
@@ -1930,4 +2055,32 @@ function _gs_helper_curl($url) {
   curl_close($ch);
   
   return $data;
+}
+
+/**
+ * Example of posting a tweet with OAuth
+ * Latest copy of this code: 
+ * http://140dev.com/twitter-api-programming-tutorials/hello-twitter-oauth-php/
+ * @author Adam Green <140dev@gmail.com>
+ * @license GNU Public License
+ * @param $tweet_text
+ *    text to be posted in twitter
+ */
+function _gs_helper_post_tweet($tweet_text) {
+  // Insert your keys/tokens
+  $consumerKey = variable_get('gs_helper_twitter_consumer_key', 'EmRAHNDsUByqt5ItZ9rxvQ');
+  $consumerSecret = variable_get('gs_helper_twitter_consumer_secret', 'z9wDw2qhonzcoTNLWu4roDuQbGSnaatjIYLK3DNYkQ');
+  $oAuthToken = variable_get('gs_helper_twitter_user_token', '52149849-pi7KDse9DzVAgJE5j0ilBijMxhLEGapnozcO6Hguv');
+  $oAuthSecret = variable_get('gs_helper_twitter_user_secret', 'N0hJ3pDz5RK6H2RsUebVGVH0hUcNLCIXqyKzcw6g');
+  
+  // Full path to twitteroauth.php (change oauth to your own path)
+  module_load_include('inc', 'gs_helper', 'twitteroauth/twitteroauth');
+  
+  // create new instance
+  $tweet = new TwitterOAuth($consumerKey, $consumerSecret, $oAuthToken, $oAuthSecret);
+  
+  // Send tweet 
+  $response = $tweet->post('statuses/update', array('status' => "$tweet_text"));
+  watchdog('gs_helper', '_gs_helper_post_tweet: <pre>'.print_r($response,1).'</pre>');
+  return $response;
 }

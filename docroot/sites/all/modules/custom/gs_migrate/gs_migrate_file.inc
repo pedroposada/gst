@@ -45,8 +45,8 @@ class FileMigration extends GSMigration {
   		'filename' => t('Name of file.'),
   		'src_filepath' => t('URL to file.'),
   		'filemime' => t('File type.'),
-  	    'timestamp' => t('Time when file was created in the system.'),
-      );
+	    'timestamp' => t('Time when file was created in the system.'),
+    );
 	
     // Create a MigrateSource object, which manages retrieving the input data.
     // $this->source = new MigrateSourceSQL($query, $source_fields, $count_query, array('map_joinable' => FALSE));
@@ -59,7 +59,7 @@ class FileMigration extends GSMigration {
   	), 'file');
   	
   	// Assign mappings TO destination fields FROM source fields.
-    $this->addFieldMapping('fid','fid');
+    // $this->addFieldMapping('fid','fid');
     $this->addFieldMapping('uid','uid')->sourceMigration('User')->defaultValue(1);
     $this->addFieldMapping('filename','filename');
     $this->addFieldMapping('uri','src_filepath');
@@ -68,7 +68,7 @@ class FileMigration extends GSMigration {
     $this->addFieldMapping('timestamp','timestamp');
 	
     // Unmapped source fields
-    $this->addUnmigratedSources(array('filepath','filesize'));
+    $this->addUnmigratedSources(array('fid','filepath','filesize'));
 	
   	// Unmapped destination fields
   	$this->addUnmigratedDestinations(array('path','contents'));

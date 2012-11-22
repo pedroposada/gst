@@ -5,17 +5,23 @@
 *************************************************************/
 
 /**
- * Implementation of hook_init();
+ * Implements hook_perms()
  */
-function gs_profile_init() {
-  drupal_add_js(drupal_get_path('module', 'gs_profile') . '/js/gs_profile_on.js');// Allow admin menu on ALL PAGES change of August 1st 2012
-  /*if (arg(0) == 'user') {
-    drupal_add_js(drupal_get_path('module', 'gs_profile') . '/js/gs_profile_on.js');
-  }
-  else {
-    drupal_add_css(drupal_get_path('module', 'gs_profile') . '/css/gs_profile.css');
-    drupal_add_js(drupal_get_path('module', 'gs_profile') . '/js/gs_profile_off.js');
-  }*/
+function gs_profile_permission() {
+  return array(
+    'cannot cancel own account' => array(
+      'title' => t("Can't cancel own user account"), 
+      'description' => t('Block users in this role from cancelling their own accounts.'),
+    ),
+    'access own notifications tab' => array(
+      'title' => t("Access own notificatons tab"), 
+      'description' => t('Allow users to manage their contact preferences.'),
+    ),
+    'access any notifications tab' => array(
+      'title' => t("Access any notificatons tab"), 
+      'description' => t('Allow users to manage their contact preferences.'),
+    ),
+  );
 }
 
 /**
@@ -24,103 +30,196 @@ function gs_profile_init() {
 function gs_profile_menu() {
   $items['user/%user/notification'] = array(
     'title' => t('Notifications'),
-    'page callback' => 'gs_profile_notification',
-    'page arguments' => array(1),
-    'access callback' => 'gs_profile_notification_access',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('gs_profile_nofications_form', 1),
+    'access callback' => 'gs_profile_access_notifications_tab',
+    'access arguments' => array(1),
     'type' => MENU_LOCAL_TASK,
-    );
-  $items['user/%user/delete'] = array(
-    'title' => t('Delete account'),
-    'page callback' => 'gs_profile_delete',
-    'page arguments' => array(1),
-    'access callback' => 'gs_profile_delete_access',
-    'type' => MENU_LOCAL_TASK,
-    );
+  );
     
   return $items;
 }
 
 /**
- * Access callback for user/%user/notification 
+ * Access callback
  */
-function gs_profile_notification_access() {
-  global $user;
-  if (arg(0) == 'user' && is_numeric(arg(1))) {
-    if ($user->uid == arg(1) || isset($user->roles[3]) || isset($user->roles[4])) {// Allow admin and editors
+function gs_profile_access_notifications_tab($account) {
+  if (user_access('access any notifications tab')) {
+    return TRUE;
+  }
+  if (user_access('access own notifications tab')) {
+    global $user;
+    if ($account->uid == $user->uid) {
       return TRUE;
     }
   }
+  
   return FALSE;
-}
-
-/**
- * Access callback for user/%user/delete
- */
-function gs_profile_delete_access() {
-  global $user;
-  if (arg(0) == 'user' && is_numeric(arg(1))) {
-    if ($user->uid == arg(1) || isset($user->roles[3])) {// Allow admin only
-      return TRUE;
-    }
-  }
-  return FALSE;
-}
-
-/**
- * Page callback for menu item user/%user/delete
- */
-function gs_profile_delete() {
-  return drupal_get_form('gs_profile_delete_form');
-}
-
-/**
- * Page callback for menu item user/%user/notification
- */
-function gs_profile_notification($account) {
-
-  return drupal_get_form('gs_profile_nofications_form');
 }
 
 /**
  * Implements hook_form_FORM_ID_alter().
  */
 function gs_profile_form_user_profile_form_alter(&$form, &$form_state, $form_id) {
-  global $user;
-  // adding cancel button
-  $form['actions']['submit']['#value'] = 'SAVE CHANGES';
-  $form['actions']['submit']['#weight'] = 1;
-  $form['actions']['cancel_action']['#value'] = 'CANCEL';
-  $form['actions']['cancel_action']['#type'] = 'submit';
-  $form['actions']['cancel_action']['#weight'] = 0;
-  $form['actions']['cancel_action']['#submit'] = array(0 => 'gs_profile_cancel_action');
+  // user object
+  $account = $form['#user'];
 
-  if (arg(0) == 'user' && is_numeric(arg(1)) && arg(2) == 'edit' && arg(3) == 'profile') {
+  // profile tab
+  if (drupal_match_path(current_path(), "user/*/edit/profile")) {
+    // hide formatting info
+    drupal_add_js('
+      jQuery( function($) {
+        $(document).ready( function() {
+          $(".filter-wrapper").hide();
+        });
+      });
+    ','inline');
+    // title
     $form['#prefix'] = '<h2>Profile Information</h2>';
-  }
-  elseif (arg(0) == 'user' && is_numeric(arg(1)) && arg(2) == 'edit') {
-    $form['account']['mail']['#prefix'] = '<div class="email-user-profile"><h2>Email address</h2>Your current email address is displayed below. To update, enter a new email address and confirm the change by entering your password at the bottom of the page.';
-    $form['account']['mail']['#suffix'] = '</div>';
-    $form['account']['mail']['#title'] = 'EMAIL ADDRESS';
-    $form['account']['mail']['#size'] = 34;
-    $form['account']['pass']['#prefix'] = '<div class="password-user-profile"><h2>Change Password</h2>To update your password, enter and confirm a new password in the fields below. Then confirm this change by entering your old password at the bottom of the page.';
-    $form['account']['pass']['#suffix'] = '</div><div class="close-account-user-profile"><h2>Close Account</h2><div class="description">Please read carefully - this action cannot be undone. Your profile information will be erased and you will no longer be able to sign in to this account: <a href="/user/' . arg(1) . '/delete" class="close-my-account">CLOSE MY ACCOUNT</a></div></div>';
-    unset($form['account']['pass']['#description']);
-    // $form['account']['pass']['#title'] = 'NEW PASSWORD';
-    $form['account']['current_pass']['#title'] = '<h2>Confirm Changes</h2>PASSWORD';
-    $form['account']['current_pass']['#description'] = '';
-    $form['account']['current_pass']['#size'] = 34;
-    $form['account']['current_pass']['#weight'] = 10;
-  }
-  
-  if (isset($user->roles[2]) && !isset($user->roles[3]) && !isset($user->roles[4])){
-    unset($form['redirect']);
-    unset($form['#metatags']);
-    unset($form['contact']);
+    // cancel button - links to "view profile" page
+    $form['actions']['cancel'] = array(
+      '#markup' => l('Cancel', "user/{$account->uid}",array('attributes' => array('class'=>array('button')))),
+    );
   }
 }
+/**
+ * Implements mymodule_preprocess_hook()
+ */
+function gs_profile_preprocess_page(&$vars) {
+  if (drupal_match_path(current_path(), "user/*")) {
+    // set page title
+    $account = menu_get_object('user',1);
+    $profile = profile2_load_by_user($account,'profile');
+    $fullname = "{$profile->field_first_name['und'][0]['value']} {$profile->field_last_name['und'][0]['value']}";
+    $name = strlen(trim($fullname)) ? $fullname : $account->name;
+    drupal_set_title("View Profile - $name");
+  }
+}
+/**
+ * Implements mymodule_preprocess_hook()
+ */
+function gs_profile_preprocess_breadcrumb(&$vars) {
+  if (drupal_match_path(current_path(), "user/*")) {
+    // set breadcrumb
+    $account = menu_get_object('user',1);
+    $profile = profile2_load_by_user($account,'profile');
+    $fullname = "{$profile->field_first_name['und'][0]['value']} {$profile->field_last_name['und'][0]['value']}";
+    $name = strlen(trim($fullname)) ? $fullname : $account->name;
+    array_pop($vars['breadcrumb']);
+    $vars['breadcrumb'][] = $name;
+  }
+}
+/**
+ * Implements mymodule_preprocess_hook()
+ */
+function gs_profile_preprocess_panels_render_display_form(&$vars) {
+  if (drupal_match_path(current_path(), "user/*/edit")) {
+    if (isset($vars['element']) && $vars['element']['#form_id'] == "user_profile_form") {
+      $vars['element']['#theme'] = 'gs_profile_account_form';
+      $vars['theme_hook_suggestions'][] = 'gs_profile_account_form';
+    }
+  }
+}
+/**
+ * Implements hook_theme()
+ */
+function gs_profile_theme($existing, $type, $theme, $path) {
+  return array(
+    'gs_profile_account_form' => array(
+      'variables' => array(), 
+    ),
+  );
+}
+/**
+ * Theme gs_profile_account_form
+ */
+function theme_gs_profile_account_form($vars) {
+  $output = '';
+  
+  // form
+  $form = $vars['element']; 
+  
+  // user object
+  $account = $vars['element']['#user'];
+  $roles = array_values($account->roles);
+  
+  // hide elements for all roles except admin
+  if (!user_access("administer permissions")) {
+    hide($form['account']['status']);
+    hide($form['overlay_control']);
+    hide($form['contact']);
+    hide($form['metatags']);
+    hide($form['account']['name']);
+    hide($form['actions']['cancel']);
+  }
+  
+  // cancel button to go to view profile page
+  $form['actions']['submit']['#prefix'] = l('Cancel', "user/{$account->uid}",array('attributes' => array('class'=>array('button'))));
+  
+  // email address
+  $form['emailaddress'] = array('#type'=>'fieldset');
+  $form['emailaddress']['title'] = array(
+    '#type' => 'item', 
+    '#prefix' => '<h2>'.t('Email Address').'</h2>',
+    '#markup' => t("Your current email address is displayed below. To update, enter a new email address and confirm the change by entering your password at the bottom of the page."),
+  );
+  $form['emailaddress']['email'] = $form['account']['mail'];
+  unset($form['emailaddress']['email']['#description']);
+  hide($form['account']['mail']);
+  $output .= render($form['emailaddress']);
+  
+  // change password
+  $form['changepass'] = array('#type'=>'fieldset');
+  $form['changepass']['title'] = array(
+    '#type' => 'item', 
+    '#prefix' => '<h2>'.t('Change Password').'</h2>',
+    '#markup' => t("To update your password, enter and confirm a new password in the fields below. Then confirm this change by entering your old password at the bottom of the page."),
+  );
+  $form['changepass']['pass'] = $form['account']['pass'];
+  $form['changepass']['pass']['pass1']['#title'] = t('New Password');
+  $form['changepass']['pass']['pass2']['#title'] = t('Confirm New Password');
+  unset($form['changepass']['pass']['#description']);
+  unset($form['changepass']['pass']['#attached']);
+  hide($form['account']['pass']);
+  $output .= render($form['changepass']);
 
-function gs_profile_cancel_action() {
-  drupal_goto(current_path());
+  // close account
+  if (!user_access("cannot cancel own account")) {
+    $form['closeaccount'] = array('#type'=>'fieldset');
+    $form['closeaccount']['title'] = array(
+      '#type' => 'item', 
+      '#prefix' => '<h2>'.t('Close Account').'</h2>',
+      '#markup' => t("Please read carefully - this action cannot be undone. Your profile information will be erased and you will no longer be able to sign in to this account: !c",
+        array('!c'=>l("CLOSE MY ACCOUNT", "user/{$account->uid}/cancel", array( 'attributes' => array( 'class'=>array( 'close-my-account' ), 'alt'=> t( "Close my account" )))))),
+    );
+    $output .= render($form['closeaccount']);
+  }
+
+  // confrim changes
+  $confirm = array('#type' => 'fieldset','#attributes'=>array('class'=>array('confirm-changes')));
+  $confirm['pass'] = $form['account']['current_pass'];
+  $confirm['pass']['#prefix'] = '<h2>'.t('Confirm Changes').'</h2>';
+  $confirm['actions'] = $form['actions'];
+  unset($confirm['pass']['#description']);
+  hide($form['account']['current_pass']);
+  hide($form['actions']);
+
+  // elements from other modules for admnin only
+  $output .= drupal_render_children($form);
+
+  // continue - confirm changes
+  $output .= render($confirm);
+    
+  // remove required form field stars
+  drupal_add_js('
+    jQuery( function($) {
+      $(document).ready( function() {
+        $("span.form-required").hide();
+      });
+    });
+  ','inline');
+  
+  return $output;
 }
 
 /**
@@ -154,29 +253,31 @@ function gs_profile_menu_local_tasks_alter(&$data, $router_item, $root_path) {
         unset($data['tabs'][0]['output'][$key]);
       }
     }
-    if (arg(0) == 'user' && is_numeric(arg(1))) {
-      $all = array(
-        'path' => 'user/%/edit/profile',
-        'load_functions' => array( 1 => 'user_category_load' ),
-        'access_callback' => 'user_edit_access',
-        'page_callback' => 'drupal_get_form',
-        'tab_parent' => 'user/%/edit',
-        'tab_root' => 'user/%',
-        'title' => 'Profile',
-        'title_callback' => 'check_plain',
-        'weight' => 3,
-        'include_file' => 'modules/user/user.pages.inc',
-        'href' => 'user/' . arg(1) . '/edit/profile',
-        'tab_root_href' => 'user/' . arg(1),
-        'tab_parent_href' => 'user/' . arg(1) . '/edit',
-        'access' => 1,
-        'localized_options' => array( 'html' => 1 ),
-      );
-      $profile = array(
-        '#theme' => 'menu_local_task',
-        '#link' => $all,
-      );
-      if (arg(0) == 'user' && is_numeric(arg(1)) && arg(2) == 'edit' && arg(3) == 'profile') {
+    if (drupal_match_path(current_path(), "user/*\nuser/*/edit/profile")) {
+      if (user_access("administer users") || $user->uid == arg(1)) {
+        $link = array(
+          'path' => 'user/%/edit/profile',
+          'load_functions' => array( 1 => 'user_category_load' ),
+          'access_callback' => 'user_edit_access',
+          'page_callback' => 'drupal_get_form',
+          'tab_parent' => 'user/%/edit',
+          'tab_root' => 'user/%',
+          'title' => 'Profile',
+          'title_callback' => 'check_plain',
+          'weight' => 3,
+          'include_file' => 'modules/user/user.pages.inc',
+          'href' => 'user/' . arg(1) . '/edit/profile',
+          'tab_root_href' => 'user/' . arg(1),
+          'tab_parent_href' => 'user/' . arg(1) . '/edit',
+          'access' => 1,
+          'localized_options' => array( 'html' => 1 ),
+        );
+        $profile = array(
+          '#theme' => 'menu_local_task',
+          '#link' => $link,
+        );
+      }
+      if (drupal_match_path(current_path(), "user/*/edit/profile")) {
         $profile['#active'] = TRUE;
       }
     }
@@ -193,56 +294,11 @@ function gs_profile_menu_local_tasks_alter(&$data, $router_item, $root_path) {
 *************************************************************/
 
 /**
- * Implementation of delete form on page: user/%user/delete
- */
-function gs_profile_delete_form() {
-  
-  $form['type'] = array(
-    '#type' => 'value', 
-    '#value' => "delete",
-  );
-  $form['actions'] = array(
-    '#type' => 'actions',
-    'Agree' => array(
-      '#type' => 'submit',
-      '#value' => 'Delete account',
-      '#prefix' => '<h2>Are you sure you want to delete your account? This cannot be undone.</h2>',
-    ),
-    'Disagree' => array(
-      '#type' => 'submit',
-      '#value' => 'Cancel',
-    ),
-  );
-
-  return $form;
-}
-
-/**
- * Submit handler for form gs_profile_delete
- */
-function gs_profile_delete_form_submit($form, &$form_state) {
-  if($form_state['clicked_button']['#value'] == "Delete account"){
-    global $user;
-    if ($user->uid != arg(1) || arg(1) == 1) { // double checking, better safe than sorry
-      drupal_goto("user");
-    }
-    $user->status = 0;
-    $original = clone $user;
-    $user->original = $original;
-    user_save($user);
-    watchdog("gs_profile", "User " . $user->uid . " has deactivated his/her account", $variables = array(), $severity = WATCHDOG_NOTICE);
-  }
-  else {
-    drupal_goto("user");
-  }
-}
-
-/**
  * Implementation of notification form on page: user/%user/notification
  */
-function gs_profile_nofications_form($form_state) {
+function gs_profile_nofications_form($form, &$form_state, $account) {
   
-  $account = user_load(arg(1));
+  // $account = user_load(arg(1));
 
   $default_value_notify = TRUE; $default_value_news_list = TRUE; $default_value_list_list = FALSE;
   $dbresult = db_query("SELECT * FROM {profile} WHERE uid = :n LIMIT 0, 1", array(':n' => $account->uid));
@@ -303,7 +359,7 @@ function gs_profile_nofications_form($form_state) {
   $form['actions']['#prefix'] = '<div class="actions-notification-form">';
   $form['account']['hidden_news'] = array('#type' => 'hidden', '#value' => $news_default_value);
   $form['account']['hidden_list'] = array('#type' => 'hidden', '#value' => $list_default_value);
-  $form['actions']['cancel'] = array('#type' => 'submit', '#value' => t('CANCEL'), '#submit' => array(0 => 'gs_profile_cancel_action'), '#weight' => 10);
+  $form['actions']['cancel'] = array('#markup' => l('Cancel', "user/{$account->uid}",array('attributes' => array('class'=>array('button')))), '#weight' => 10);
   $form['actions']['submit'] = array('#type' => 'submit', '#value' => t('SAVE CHANGES'), '#weight' => 11);
   $form['actions']['#suffix'] = '</div>';
   

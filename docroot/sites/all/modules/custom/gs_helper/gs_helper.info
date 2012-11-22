@@ -12,6 +12,7 @@ dependencies[] = quicktabs
 dependencies[] = workbench
 dependencies[] = imagecache_external
 dependencies[] = views_bulk_operations
+dependencies[] = nodequeue
 
 ;stylesheets[theme][] = css/gs_helper.css
 

@@ -1,0 +1,8 @@
+name = GS Special Issues
+description = Provides functionality for Best of Vancouver and Golden Plates related displays and views.
+project = "gs_special_issues"
+package = "custom"
+version = "7.x-1.0"
+core = "7.x"
+dependencies[] = views
+dependencies[] = panels

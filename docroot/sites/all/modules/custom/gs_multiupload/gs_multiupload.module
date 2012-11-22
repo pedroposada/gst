@@ -106,7 +106,6 @@ function gs_multiupload_preprocess_gs_multiupload_uploader(&$vars) {
     'gs_multiupload' => array(
       'nid' => $vars['node']->nid,
       'maxfilesize' => variable_get('gs_multiupload_maxfilesize',5),
-      // 'queuefiles' => variable_get('gs_multiupload_queuefiles',2),
       'maxfiles' => variable_get('gs_multiupload_maxfiles',10),
     )
   ),'setting'); 
