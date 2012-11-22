@@ -1,0 +1,74 @@
+/* File Entity Modal */
+#media-browser-page {
+  padding: 10px;
+}
+
+  #media-browser-page .messages {
+    margin-right: 10px;
+  }
+  
+/* Context blocks form */
+.context-plugin-form-block #context-blockform .selector {
+  vertical-align: top;
+}
+
+  .context-plugin-form-block #context-blockform .context-blockform-selector {
+    height: 500px;
+  }
+
+
+/* File lists */
+#block-system-main .node-form .form-type-tableform table tr td:first-child {
+  width: 130px;
+}
+
+  #block-system-main .node-form .form-type-tableform table tr td,
+  #block-system-main .node-form .form-type-tableform table tr,
+  #block-system-main .node-form .form-type-tableform table thead,
+  #block-system-main .node-form .form-type-tableform table tr td {
+    border: 0;
+  }
+
+  #block-system-main .node-form .form-type-tableform table table {
+    border: 0;
+  }
+  
+    #block-system-main .node-form .form-type-tableform table table tr td:first-child {
+      width: auto;
+    }
+    
+
+/* media cropper */
+.gs-image-cropper,
+.gs-image-cropper-wrapper {
+  background-color: #FFFFFF;
+}
+
+/* gsmedia browser */
+.media_browser_list .gsmedia-item-wrapper{
+  cursor: pointer;
+  margin-right: 10px;
+  float: left;
+  width: 100px;
+  min-height: 132px;
+  padding: 5px 0;
+}
+
+.media_browser_list .gsmedia-item-wrapper .gsmedia-item {
+  height:100px;
+}
+
+.media_browser_list .gsmedia-item-wrapper .cutline,
+.media_browser_list .gsmedia-item-wrapper .credit{
+  color: #666666;
+  font-family: Verdana, Arial, sans-serif;
+  font-size: 11px;
+  line-height: 16px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.media_browser_list .gsmedia-item-wrapper .credit {
+  color: #282725;
+  font-style: italic;
+}

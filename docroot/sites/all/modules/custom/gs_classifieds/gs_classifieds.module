@@ -1,0 +1,912 @@
+<?php
+
+/*************************************************************
+        MODULE INCLUDE FILES
+*************************************************************/
+
+// module_load_include('inc', 'gs_classifieds', 'gs_classifieds.config');
+
+/*************************************************************
+        DRUPAL HOOKS
+*************************************************************/
+
+/**
+ * Implementation of hook_menu();
+ */
+function gs_classifieds_menu() {
+  $items['admin/workbench/classifieds/import'] = array(
+    'title' => 'classifieds import',
+    'page callback' => 'gs_classifieds_admin_dispatch',
+    'access arguments' => array('access classifieds import')
+  ); 
+  $items['admin/workbench/classifieds'] = array(
+     'title' => 'Classifieds',
+     'page callback' => 'gs_classifieds_admin_dispatch',
+     'access arguments' => array('access classifieds administration'),
+     'type' => MENU_LOCAL_TASK,
+     'weight' => 102
+  );
+  $items ['couponprint'] = Array (
+     'title' => 'Print Coupon',
+     'page callback' => 'gs_classifieds_print_coupon',
+     'page arguments' => array(1),
+     'access callback' => 'gs_classifieds_access_coupon_print',
+     'type' => MENU_LOCAL_ACTION,
+  );
+  $items ['coupon'] = Array (//this menu item is necessary to be able to have coupon/%coupon/print
+     'title' => 'Print Coupon',
+     'page callback' => 'gs_classifieds_coupon',
+     'access arguments' => array('access content'), 
+     'type' => MENU_LOCAL_TASK,
+  );
+  return $items;
+}
+
+function gs_classifieds_access_coupon_print() {
+ return TRUE;
+}
+
+function gs_classifieds_coupon() {
+  drupal_goto("coupons");
+  exit();
+}
+
+function gs_classifieds_print_coupon($coupon = 0) {// This page needs to be reconfigured (waiting for input from sales)
+  $node = node_load($coupon);
+  if ($node->type == 'coupon'){
+    include_once(drupal_get_path('module', 'gs_classifieds') . '/gs_classifieds.theme.inc');
+    theme_gs_classifieds_print_coupons($node);
+  }
+  else {
+    print t('Sorry, there is no coupon for this id');
+  }
+}
+
+/**
+ * Implementation of hook_init().
+ */
+function gs_classifieds_init() {
+  if (gs_classifieds_check_prohibited()) {
+    if (gs_classifieds_get_adult_access()) {
+      if (isset($_POST['op'])) {
+        return;
+      }
+    }
+    else {
+      drupal_set_message('You are about to view a page that may contain Adult related content. Please review the Adult Services Disclaimer before proceeding.', 'warning');
+      drupal_goto('adult-services-disclaimer', array('query'=>drupal_get_destination()));
+      exit();
+    }
+  }
+//  if ($node = menu_get_object()) {
+//    switch ($node->type) {
+//      case 'content_classified_ad':
+//        $taxonomy_term = taxonomy_term_load($node->field_class_tax['und'][0]['tid']);
+//        if($node->field_class_tax['und'][0]['tid'] == 739 || $node->field_class_tax['und'][0]['tid'] == 740 || strlen(strstr($taxonomy_term->name, "Adult")) > 0){
+//          if (!gs_classifieds_get_adult_access()){
+//        watchdog('Classifieds', t("Accessed adult node: " . arg(1) . " and adult session variable not set. Redirecting to: adult-services-disclaimer?dest=node/" . arg(1)));
+//            // We're not allowed to display adult content so goto disclaimer
+//            /*drupal_goto($path = 'adult-services-disclaimer', $query = array('query'=>array(
+//              'dest'=> check_plain($_GET['q']),
+//            )));*/
+//            $destination = drupal_parse_url(check_plain($_GET['q']));
+//            $path = 'adult-services-disclaimer';    
+//
+//            $options = array('absolute' => TRUE, 'query' => array('dest' => $destination['path']));
+//            $url = url($path, $options);
+//            $http_response_code = 302;
+//            header('Location: ' . $url, TRUE, $http_response_code);
+//            drupal_exit($url);
+//
+//          } 
+//        }
+//    break;
+//    }
+//  }
+//  
+//  $tmp = arg(1);
+//  $term = new stdClass();
+//  if($tmp == 'term'){
+//    $term = taxonomy_term_load(arg(2));
+//  if($term->tid == 673 || $term->tid == 674 || strlen(strstr($term->name, "Adult")) > 0){  // The 2nd arg contains the word "Adult"
+//      if (!gs_classifieds_get_adult_access()) {
+//        // We're not allowed to display adult content so goto disclaimer
+//        drupal_goto($path = 'adult-services-disclaimer', $query = array('query'=>array(
+//          'dest'=> check_plain($_GET['q']),
+//        )));
+//      } 
+//    }
+//  }
+}
+
+/**
+ * Implementation of hook_block_info().
+ */
+function gs_classifieds_block_info() {
+  $blocks[0] = array(
+    'info' => t('Disclaimer page'),
+  );
+  $blocks[1] = array(
+    'info'  => t('Classifieds Topics Tray'),
+    'cache' => DRUPAL_CACHE_PER_PAGE,
+  );
+  $blocks[2] = array(
+    'info'  => t('Classifieds search block'),
+  );
+  $blocks[3] = array(
+    'info'  => t('Classifieds node Topics Tray'),
+    'cache' => DRUPAL_CACHE_PER_PAGE,
+  );
+  $blocks[4] = array(
+    'info'  => t('Classifieds homepage'),
+    'cache' => DRUPAL_CACHE_PER_PAGE,
+  );
+  $blocks[5] = array(
+    'info'  => t('Classifieds tabs'),
+    'cache' => DRUPAL_CACHE_PER_PAGE,
+  );
+  $blocks[6] = array(
+    'info'  => t('Classifieds title category'),
+    'cache' => DRUPAL_CACHE_PER_PAGE,
+  );
+  return $blocks;
+}
+ 
+/**
+ * Implementation of hook_block_view().
+ */
+function gs_classifieds_block_view($delta='') {
+  $block = array();
+  switch ($delta) {
+    case 0:
+      $block['subject'] = t('<none>');
+      $block['content'] = gs_classifieds_get_disclaimer("block");
+      break;
+    case 1:
+      $menu_object = menu_get_object('taxonomy_term', 2);
+      $active = 0;
+
+      if ($term_view = menu_get_object('taxonomy_term', 2)) {
+        if(isset($menu_object->parent[0])){
+          $active = $term_view->parent[0];
+        }
+        else {
+          $active = $term_view->tid;
+        }
+      }
+      $block['subject'] = t('FILTER ADS');
+      $block['content'] = gs_classifieds_get_tray_views($active);
+      break;
+    case 2:
+      $block['subject'] = t('<none>');
+      $block['content'] = gs_classifieds_search_block();
+      break;
+    case 3:
+      $node_load = node_load(arg(1));
+      $active = 0;
+
+      if(isset($node_load->field_class_tax['und'][0]['tid'])){
+        $active = $node_load->field_class_tax['und'][0]['tid'];
+      }
+      
+      include_once(drupal_get_path('module', 'gs_classifieds') . '/gs_classifieds.theme.inc');
+      $block['subject'] = t('FILTER ADS');
+      
+      $block['content'] = gs_classifieds_get_tray_views($active);
+      break;
+    case 4:
+      $block['subject'] = t('<none>');
+      $block['content'] = gs_classifieds_homepage();
+      break;
+    case 5:
+      $block['subject'] = t('<none>');
+      $block['content'] = gs_classifieds_tabs();
+      break;
+    case 6:
+      $block['subject'] = t('<none>');
+      $block['content'] = gs_classifieds_title_category();
+      break;
+  }
+  return $block;
+}
+
+/**
+ * Implementation of hook_cron_queue_info_alter();
+ * Only run VBO tasks (which tend to slow the system down) between 1am and 4am, considering the fact that cron runs at least once between 1 and 4am
+ * Note: clock is 24hour
+ */
+function gs_classifieds_cron_queue_info_alter(&$queues) {
+
+  $date_now_info = date_now();
+  $date = $date_now_info->toArray();
+  $time = 0;
+
+  if($date['hour'] > 0 && $date['hour'] < 5 ) {
+    $time = 90;
+  }
+
+  $queues['views_bulk_operations'] = array(
+    'worker callback' => '_views_bulk_operations_queue_process', 
+    'time' => $time,
+  );  
+}
+
+/**
+ * Implements hook_views_pre_render()
+ * 
+ */
+function gs_classifieds_views_pre_render(&$view) {
+  //&& gs_classifieds_get_adult_access()
+  if ($view->name == 'search_classifieds') {
+    // Search through results for adult content.
+    foreach($view->result as $key => $value) {
+      if (isset($value->field_data_field_class_tax_field_class_tax_tid)) {
+        $tid = $value->field_data_field_class_tax_field_class_tax_tid;
+        
+        if (in_array($tid, array(673, 674))) {
+          $adult_content[] = $key;
+        }
+      }
+    }
+    if (!empty($adult_content)) {
+      // Check if the user can view adult content.
+      if (gs_classifieds_get_adult_access()) {
+        return;
+      }
+      // If they cannot view adult content, see if search is already set.
+      elseif (isset($_SESSION['adult']['search'])) {
+        // Remove all adult content from search results.
+        foreach ($adult_content as $key) {
+          unset($view->result[$key]);
+        }
+      }
+      // If search session is not yet set, redirect user to disclaimer.
+      else {
+        drupal_set_message('The returned search results may contain ads with Adult related content. Please review the Adult Services Disclaimer before proceeding. By Disagreeing, non Adult related search results will be returned.', 'warning');
+        drupal_goto( 'adult-services-disclaimer', array('query'=>drupal_get_destination()) );
+        exit();
+      }
+    }
+  }
+}
+
+/**
+ * Implements hook_views_query_alter()
+ * 
+ */
+function gs_classifieds_views_query_alter(&$view, &$query) {
+  if ($view->name == 'search_classifieds') {
+    $search = '';
+    
+    // Check if search variable is available from the view, if not, grab it from the url.
+    if (isset($view->exposed_raw_input['search'])) {
+      $search = $view->exposed_raw_input['search'];
+    }
+    elseif (isset($_GET['search']) && strlen($search)) {
+      $search = $_GET['search'];
+    }
+    
+    // Add a new LEFT JOIN and WHERE clause to search in the Classifieds keyword field as well.
+    $join = new views_join();
+    $join->construct('field_data_field_keywords', 'node', 'nid', 'entity_id');
+    $query->table_queue['node__field_data_field_keywords'] = array(
+      'table' => 'field_data_field_keywords',
+      'num' => 1,
+      'alias' => 'node__field_data_field_keywords',
+      'join' => $join,
+      'relationship' => 'node',
+    );
+    // The first parameter selects the 'AND/OR' group this WHERE will be added to.
+    // In this case, we add it to the second group (the first one is an AND group.
+    $query->add_where(2, 'node__field_data_field_keywords.field_keywords_value', '%' . $search . '%', 'LIKE');
+    // Considered concept where we filter out the adult content at the query level.
+    // We were not sure how and where this content should be chosen to be filtered.
+    //$query->add_where(1, 'field_data_field_class_tax.field_class_tax_tid', array(673, 674), 'NOT IN');
+  }
+}
+
+/*************************************************************
+        FORMS
+*************************************************************/
+
+/**
+ * Disclaimer page
+ * get disclaimer form
+ */
+function gs_classifieds_disclaimer(){
+  $form = drupal_get_form('gs_classifieds_disclaimer_form');
+  return drupal_render($form);
+}
+
+/**
+ * Classifieds Search block
+ * get classifieds search form
+ */
+function gs_classifieds_search_block(){
+  $form = drupal_get_form('gs_classifieds_search_block_form');
+  return drupal_render($form);
+}
+
+/**
+ * Classifieds Search block
+ * defining form
+ */
+function gs_classifieds_search_block_form($form, &$form_state) {
+  $options = array();
+  $options[] = "- Any -";
+  $parent_taxonomy = taxonomy_get_tree(6, 0, 1);
+  foreach ($parent_taxonomy as $key => $value) {
+    $options[] = $value->name;
+  }
+
+  $form['text'] = array(
+    '#type' => 'textfield', 
+    '#size' => 15,
+    '#value' => "",
+  );
+  $form['adultaccess'] = array(
+    '#type' => 'hidden', 
+    '#default_value' => FALSE,
+  );
+  $form['selected'] = array(
+       '#type' => 'select',
+       '#options' => $options,
+   );
+  $form['actions'] = array(
+    '#type' => 'actions',
+    'Search' => array(
+      '#type' => 'submit',
+      '#value' => 'Search',
+    ),
+  );
+
+  return $form;
+}
+
+/**
+ * Disclaimer page
+ * defining form
+ */
+function gs_classifieds_disclaimer_form($form, &$form_state) {
+  $form['type'] = array(
+    '#type' => 'value', 
+    '#value' => "hello",
+  );
+  $form['actions'] = array(
+    '#type' => 'actions',
+    'Agree' => array(
+      '#type' => 'submit',
+      '#value' => 'Agree',
+      /*'#attributes' => array(
+        'onclick' => 'clickevent()'),*/
+    ),
+    'Disagree' => array(
+      '#type' => 'submit',
+      '#value' => 'Disagree',
+    ),
+  );
+
+  return $form;
+}
+
+/**
+ * Classifieds Search block
+ * function trigger on form submit
+ */
+function gs_classifieds_search_block_form_submit($form, &$form_state) {
+  $parent_taxonomy = taxonomy_get_tree(6, 0, 1);
+  $tid = 'All';
+  
+  foreach($parent_taxonomy as $key => $value) {
+    if ($value->name == $form['selected']['#options'][$form['selected']['#value']]) {
+      $tid = $value->tid;
+    }
+  }
+  
+  $form_state['redirect'] = array(
+    'classifieds/search',
+    array('query' => array(
+      'search' => $form_state['input']['text'],
+      'tid' => $tid,
+    )),
+  );
+  
+  return;
+}
+
+/**
+ * Disclaimer page
+ * function trigger on form submit
+ */
+function gs_classifieds_disclaimer_form_submit($form, &$form_state) {
+  $redirect = '';
+  
+  switch ($form_state['clicked_button']['#value']) {
+    case 'Agree':
+      $_SESSION['adult']['status'] = TRUE;
+      $_SESSION['adult']['search'] = TRUE;
+      $_SESSION['adult']['access'] = time();
+      $redirect = $_SERVER['HTTP_REFERER'];
+      if (isset($_GET['destination'])) {
+        $redirect = $_GET['destination'];
+      }
+      break;
+    case 'Disagree':
+      $_SESSION['adult']['status'] = FALSE;
+      $_SESSION['adult']['search'] = FALSE;
+      if (preg_match('/classifieds\/search/', $_GET['destination'], $matches)) {
+        $redirect = $_GET['destination'];
+      }
+      else {
+        $url = url('', array('absolute' => TRUE));
+        header('Location: ' . $url, TRUE, 302);
+        drupal_exit($url);
+      }
+      break;
+  }
+  
+  $form_state['redirect'] = $redirect;
+  // Submission logic.
+//  if($form_state['clicked_button']['#value'] == "Agree"){
+//    gs_classifieds_set_adult_session();
+//    gs_classifieds_set_no_adult_search_session(0);
+//  
+//    if (isset($_GET['dest'])) {
+//      $destination = drupal_parse_url($_GET['dest']);
+//      $path = $destination['path'];    
+//      if ($_GET['dest'] == 'classifieds/search') {// if coming from search page, add search parameters
+//        drupal_goto($path, $query = array('query'=>array(
+//          'body_value' => $_GET['body_value'], 'field_class_tax_tid' => $_GET['field_class_tax_tid'],
+//        )));  
+//      }
+//
+//      $options = array('absolute' => TRUE);
+//      $url = url($path, $options);
+//      $http_response_code = 302;
+//      header('Location: ' . $url, TRUE, $http_response_code);
+//      drupal_exit($url);
+//    }
+//    else{
+//      $path = "classifieds/adult";    
+//      $options = array('absolute' => TRUE);
+//      $url = url($path, $options);
+//      $http_response_code = 302;
+//      header('Location: ' . $url, TRUE, $http_response_code);
+//      drupal_exit($url);     
+//    }
+//  } 
+//  else {
+//    gs_classifieds_set_no_adult_search_session(1);
+//    if ($_GET['dest'] == 'classifieds/search') {// if coming from search page, add search parameters
+//      $destination = drupal_parse_url($_GET['dest']);
+//      $path = $destination['path'];  
+//      drupal_goto($path, $query = array('query'=>array(
+//          'body_value' => $_GET['body_value'], 'field_class_tax_tid' => $_GET['field_class_tax_tid'],
+//        )));  
+//    }
+//    $path = "";    
+//    $options = array('absolute' => TRUE);
+//    $url = url($path, $options);
+//    $http_response_code = 302;
+//    header('Location: ' . $url, TRUE, $http_response_code);
+//    drupal_exit($url);     
+//  }
+}
+
+/*************************************************************
+        HELPERS
+*************************************************************/
+
+function gs_classifieds_admin_dispatch() {
+  include(drupal_get_path('module', 'gs_classifieds') . '/includes/gsadmin_classifieds.inc');
+
+  switch (arg(3)) {
+
+    case 'import':
+      return classifieds_import();
+      break;
+
+    case 'upload':
+      return classifieds_form_upload();
+      break;
+
+    default:
+      return classifieds_admin_menu();
+      break;
+  }
+}
+
+/**
+ * Disclaimer page
+ * returns disclaimer text
+ */
+/*function gs_classifieds_get_disclaimer_text(){
+  $output = "<div class='adultdisclaimer'>";
+  $output .= "<p><b>WARNING</b> - This area of the www.straight.com website may contain nudity and sexuality, and is intended for a mature person. It must not to be accessed by anyone under the age of 18 (or the age of consent in the jurisdiction from which it is being accessed).</p>
+    <p><b>YOU MUST AGREE TO THE FOLLOWING BEFORE ENTERING!</b></p>
+    <ul> 
+    <li>I am over age 18 years old, and I have the legal right to possess adult material in my community.</li> 
+    <li>I will not permit any person(s) under 18 years of age to have access to any of the materials contained in this site.</li> 
+    <li>I am familiar with the rules governing the viewing or possession of sexually oriented materials as defined by my local jurisdiction.</li>
+    <li>I agree that responsibility for the editorial content, and/or the content of advertisers' pages do not necessarily reflect the opinions of the  publisher of www.straight.com.</li> 
+    <li>I am voluntarily choosing to access this site, because I want to view, read and/or hear the various materials which are available. I do not find images of nude adults, adults engaged in sexual acts, or other sexual material to be offensive or objectionable.</li> 
+    <li>I will exit from this site immediately if I am in any way offended by the sexual nature of any material.</li>
+    <li>I understand and agree to abide by the standards and laws of my community. By logging on and viewing any part of this Web site, I agree that I shall not hold the owners of the Web site or its employees responsible for any materials located on the site.</li>
+    <li>This entire www.straight.com website, including it's code, images, logos, and names are protected by copyright, and any infringement of said copyright will be prosecuted to the fullest extent of the law. The creators of this Web site along with the services provided are released of all liabilities.</li>
+    </ul>";
+  $output .= "<p>Click 'Agree' to indicate that you abide by these terms and wish to enter the Adult Services section of the site.</p>";
+  $output .= "<p>If you do not agree to these terms, click 'Disagree' to go back to the Straight.com homepage.</p>";
+  $output .= "</div>";
+    
+  return $output;
+}*/
+ 
+/**
+ * Returns html of classifieds tab
+ */
+function gs_classifieds_tabs() {
+  $css_adult_classifieds = "";
+  $css_classifieds = "active ";
+  
+  if($node = menu_get_object('node')) {
+    $field_class_tax = field_get_items('node', $node, 'field_class_tax');
+    
+    foreach($field_class_tax as $key => $value) {
+      if (in_array($value['tid'], array(673, 674))) {
+        $css_adult_classifieds = "active ";
+        $css_classifieds = "";
+      }
+    }
+  }
+  elseif (arg(0) == 'classifieds' && (strlen(strstr(arg(1), "adult")) > 0)) {
+    $css_adult_classifieds = "active ";
+    $css_classifieds = "";
+  }
+  if(arg(1) == 'term') {
+    $parent = taxonomy_get_parents(arg(2));
+    $tax = taxonomy_term_load(arg(2));
+  $parent[] = $tax;
+    foreach($parent as $value){
+      if($value->tid == 673 || $value->tid == 674 || strlen(strstr($value->name, "Adult")) > 0){
+        $css_adult_classifieds = "active "; $css_classifieds = "";
+    }
+    }
+  }
+
+  include_once(drupal_get_path('module', 'gs_classifieds') . '/gs_classifieds.theme.inc');
+
+  return theme_gs_classifieds_tabs($css_classifieds, $css_adult_classifieds);
+}
+
+/**
+ * Returns html of homepage classifieds block
+ */
+function gs_classifieds_homepage() {
+  $terms = taxonomy_get_tree(6, 0, 1);
+  $count_terms = 0;
+ 
+  foreach ($terms as $key => $term) {//Remove terms which do not contain any nodes
+  $count_terms++;
+    $nodes_with_tax = taxonomy_select_nodes($term->tid);
+  if (empty($nodes_with_tax)){
+      unset($terms[$key]);
+    }
+    else {
+      $empty = TRUE;
+    foreach($nodes_with_tax as $key2 => $value) {
+        $result = db_query("SELECT field_data_field_expiry_date.field_expiry_date_value, field_data_field_activation_date.field_activation_date_value 
+          FROM {field_data_field_expiry_date} JOIN {field_data_field_activation_date} ON field_data_field_expiry_date.entity_id = field_data_field_activation_date.entity_id 
+          WHERE field_data_field_expiry_date.entity_id = :entityid", array(':entityid' => $value));
+        foreach ($result as $record) {
+      if(gs_classifieds_get_timestamp($record->field_activation_date_value) < time() && gs_classifieds_get_timestamp($record->field_expiry_date_value) > time()) {
+            $empty = FALSE;
+          }
+        }
+      }
+      if($empty) {unset($terms[$key]);}
+    }
+  }
+  $count = 0; $col = 0;
+  $num_rows = ceil($count_terms / 3);
+  $output = '<h2><a href="/classifieds">Classifieds</a></h2>';
+  $output .= '<table class="views-view-grid cols-3"><tbody>';
+  foreach ($terms as $key => $term) {
+  $col = $count % 3; 
+  if ($col == 0) {
+    $row = ceil(($count + 1)/ 3);
+    $output .= '<tr class="row-' . $row. '">';
+  }
+  $output .= '<td class="col-' . $col . '">' . l($term->name, 'taxonomy/term/' . $term->tid) . '</td>';
+  if ($col == 2) {
+    $output .= '</tr>';
+  }
+  $count++;
+  }
+  if ($col != 3) { $output .= '</tr>'; }
+  $output .= '</tbody></table>';
+  $iconPath = "/" . drupal_get_path('module', 'gs_classifieds') . "/images/";
+  $output .= '<div id="classified-block-footer"><a href="https://georgiastraight.onlineads.advpubtech.com/">PLACE A CLASSIFIED AD &raquo;</a><div class="classifieds-logo"><img class="print-logo" src="' . $iconPath . '/straight_com-logo-small.png" alt="Straight.com"/></div></div>';
+  
+  return $output;
+}
+
+function gs_classifieds_get_tray_views($active) {
+  drupal_add_js(array('gs_classifieds'=>array(
+    'collapsibleTrayId' => 'topics-tray-wrapper',
+    'collapsibleTrayInnerId' => 'topics-tray',
+    'collapsibleTrayMoreText'=>'MORE', 
+    'collapsibleTrayLessText' => 'LESS')), 
+    'setting');
+  drupal_add_js(drupal_get_path('module', 'gs_classifieds') . '/js/gs_classifieds.topics_tray.js');
+
+  $terms = taxonomy_get_tree(6, 0, 1);
+
+  $adult = 0;
+  $active_term = taxonomy_term_load($active);
+  if ($active_term->tid == 739 || $active_term->tid == 740 || strlen(strstr($active_term->name, "Adult")) > 0) {
+    $adult = 1;
+  }
+
+  foreach ($terms as $key => $term) {//Remove terms which do not contain any nodes
+    $nodes_with_tax = taxonomy_select_nodes($term->tid);
+    if (empty($nodes_with_tax)){
+      unset($terms[$key]);
+    }
+    else {
+      $empty = TRUE;
+      foreach($nodes_with_tax as $key2 => $value) {
+        $result = db_query("SELECT field_data_field_expiry_date.field_expiry_date_value, field_data_field_activation_date.field_activation_date_value 
+          FROM {field_data_field_expiry_date} JOIN {field_data_field_activation_date} ON field_data_field_expiry_date.entity_id = field_data_field_activation_date.entity_id 
+          WHERE field_data_field_expiry_date.entity_id = :entityid", array(':entityid' => $value));
+        foreach ($result as $record) {
+          if(gs_classifieds_get_timestamp($record->field_activation_date_value) < time() && gs_classifieds_get_timestamp($record->field_expiry_date_value) > time()) {
+            $empty = FALSE; 
+          }
+        }
+      }
+      if($empty) {unset($terms[$key]);}
+    }
+  }
+
+  foreach ($terms as $key => $term) {//Remove Adult terms from non adult pages and vice versa 
+    $current_term = taxonomy_term_load($term->tid);
+    $current_term_is_adult = 0;
+    if ($current_term->tid == 739 || $current_term->tid == 740 || strlen(strstr($current_term->name, "Adult")) > 0){
+      $current_term_is_adult = 1;
+    }
+    if ($current_term_is_adult == 1 ^ $adult == 1) {//We are either on an Adult page and term is not adult OR we are not on an Adult page and term is adult.
+      unset($terms[$key]);
+    }
+  }
+
+  if (isset($active)) {
+  // Move the active term to the top of the list.
+    foreach ($terms as $key => $term) {
+      if ($term->tid == $active) {
+        unset($terms[$key]);
+        $terms = array_merge(array($term), $terms); 
+      }
+    }
+  }
+
+  include_once(drupal_get_path('module', 'gs_classifieds') . '/gs_classifieds.theme.inc');
+
+  return theme_gs_classifieds_topics_tray($terms, $active);
+}
+
+/**
+ * input time: 2012-06-28 03:00:00
+ * output UNIX timestamp
+ */
+function gs_classifieds_get_timestamp($date = NULL) {
+  if(!$date) {
+    return time();
+  }
+  else {
+    $split = explode(" ", $date);
+    $cal = explode("-", $split[0]);
+    $time = explode(":", $split[1]);
+    return mktime($time[0], $time[1], $time[2], $cal[1], $cal[2], $cal[0]);
+  }
+}
+
+/**
+ * Filter user access to adult taxonomy pages (this is necessary for when there are no nodes in a taxonomy category and the user has access to url)
+ * 
+ * update of 18th July 2012: Adult session variable test moved to hook_exit for case of when an anonymous user goes to adult page, 
+ * waits for timer to run out, then logs in. The issue was that the session variable test was done too early and the login process was not finished.
+ * Seems to work correctly with hook_exit()
+ * 
+ *
+function gs_classifieds_search_block() {
+   $tmp = arg(1);
+   $term = new stdClass();
+   if($tmp == 'term'){
+     $term = taxonomy_term_load(arg(2));
+   }
+  if($term->tid == 673 || $term->tid == 674 || strlen(strstr($term->name, "Adult")) > 0){  // The 2nd arg contains the word "Adult"
+    if (!gs_classifieds_get_adult_access()) {
+      // We're not allowed to display adult content so goto disclaimer
+      drupal_goto($path = 'adult-services-disclaimer', $query = array('query'=>array(
+        'dest'=> check_plain($_GET['q']),
+      )));
+    } 
+  }
+  return '';
+}*/
+
+/**
+ * Check if current page is for adults only.
+ */
+function gs_classifieds_check_prohibited(){
+  if (path_is_admin(current_path())) {
+    return;
+  }
+  
+  $path = $_GET['q'];
+  
+  $prohibited_paths = array(
+    'classifieds/adult',
+  );
+  $prohibited_terms = array(
+    673, // Adult Services
+    674, // Adult Services - Gay
+  );
+  
+  if ($path === 'classifieds/adult') {
+    return TRUE;
+  }
+    
+  if ($term = menu_get_object('taxonomy_term', 2)) {
+    foreach ($term->parent as $value) {
+      if (in_array($value, $prohibited_terms)) {
+        return TRUE;
+      }
+    }
+  }
+  
+  if ($node = menu_get_object('node')) {
+    if ($node->type == 'content_classified_ad') {
+      $field_class_tax = field_get_items('node', $node, 'field_class_tax');
+      foreach ($field_class_tax as $value) {
+        if (in_array($value['tid'], $prohibited_terms)) {
+          return TRUE;
+        }
+      }
+    }
+  }
+  
+  return FALSE;
+}
+
+/**
+ * If adult session not there return false
+ * if not, if the timer is over the limit return false
+ * if not reset the timer and return true
+ */
+function gs_classifieds_get_adult_access(){
+  $adult_status = FALSE;
+  $adult_search = FALSE;
+  $duration = 300; // 5 minutes
+  $session_length = 0;
+  
+  if (isset($_SESSION['adult']['status'])) {
+    $adult_status = $_SESSION['adult']['status'];
+  }
+  
+  if (isset($_SESSION['adult']['search'])) {
+    $adult_search = $_SESSION['adult']['search'];
+  }
+  
+  if (isset($_SESSION['adult']['access'])) {
+    $session_length = time() - $_SESSION['adult']['access'];
+  }
+  
+  if (($adult_status || $adult_search) && $session_length < $duration) {
+    $_SESSION['adult']['access'] = time();
+    return TRUE;
+  }
+  
+  return FALSE;
+//  module_load_include('inc', 'gs_classifieds', 'gs_classifieds.config');
+//  if (!isset($_SESSION['adult']['#value'])) {
+//    return FALSE;
+//  }
+//  elseif ((time() - $_SESSION['adult']['#value']) > GS_TID_ADULT) {
+//    return FALSE;
+//  }
+//  else {
+//    gs_classifieds_set_adult_session();
+//    gs_classifieds_set_no_adult_search_session(0);
+//    return TRUE;
+//  }
+} 
+
+/**
+ * If adult search is set or not
+ *
+ * return 1 if not set or timmed out
+ * return 2 if search without adult content
+ * return 3 if adult content is allowed
+ *
+ */
+/*function gs_classifieds_get_adult_search_access(){
+  module_load_include('inc', 'gs_classifieds', 'gs_classifieds.config');
+  if (!isset($_SESSION['adult']['adult_search']['#value'])) {
+    return 1;
+  }
+  elseif ((time() - $_SESSION['adult']['adult_search']['#value']) > GS_TID_ADULT) {
+    return 1;
+  }
+  elseif ($_SESSION['adult']['adult_search']['#access'] == 1) {
+    gs_classifieds_set_no_adult_search_session(1);
+    return 2;
+  }
+  else {
+    gs_classifieds_set_adult_session();
+    gs_classifieds_set_no_adult_search_session(0);
+    return 3;
+  } 
+}*/
+
+/**
+ * Set adult session
+ */
+/*function gs_classifieds_set_adult_session(){
+  $_SESSION['adult'] = array();
+  $_SESSION['adult']['#value'] = time();
+}*/
+
+/**
+ * Set adult search session
+ * set defult to no adult search
+ */
+/*function gs_classifieds_set_no_adult_search_session($value = 1){
+  $_SESSION['adult']['adult_search'] = array();
+  $_SESSION['adult']['adult_search']['#value'] = time();
+  $_SESSION['adult']['adult_search']['#access'] = $value;
+}*/
+
+/**
+ * Disclaimer page
+ */
+function gs_classifieds_get_disclaimer($type = "block") {
+  if ($type == "block") {
+    $output = gs_classifieds_disclaimer();
+    return $output;
+  }
+}
+
+/**
+ *
+ */
+function gs_classifieds_title_category() {
+  $tmp = arg(1);
+  $term = new stdClass();
+  if($tmp == 'term'){
+    $term = taxonomy_term_load(arg(2));
+  } 
+  return '<h2 id="classifieds-category-title">' . $term->name . '</h2>';
+}
+
+/**
+ * Generates breadcrumb for classifieds node page
+ * This function is no longer in use, handling for breadcrumb is done directly in gs_breadcrumb.
+ */
+/*function gs_classifieds_node_breadcrumb($node) {
+  $breadcrumb = array();
+  // Generate the home breadcrumb.
+  $breadcrumb[] = l(t('Home'), NULL);
+   
+  if (isset($node->field_class_tax['und'][0]['taxonomy_term']->parent[0])) {
+    $parent = taxonomy_term_load($node->field_class_tax['und'][0]['taxonomy_term']->parent[0]);
+    // Generate the parent taxonomy breadcrumb.
+    $breadcrumb[] = l($parent->name, 'taxonomy/term/' . $parent->tid);
+  }
+  if (isset($node->field_class_tax['und'][0]['taxonomy_term'])) {
+    // Generate the Child taxonomy breadcrumb.
+    $breadcrumb[] = l($node->field_class_tax['und'][0]['taxonomy_term']->name, 'taxonomy/term/' . $node->field_class_tax['und'][0]['taxonomy_term']->tid, array('attributes' => array('class' => array('active'))));
+  }
+
+  return $breadcrumb;  
+}*/

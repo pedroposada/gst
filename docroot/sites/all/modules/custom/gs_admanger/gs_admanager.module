@@ -1,0 +1,270 @@
+<?php
+
+/*************************************************************
+        DRUPAL HOOKS
+*************************************************************/
+
+/**
+ * Implementation of hook_init();
+ */
+function gs_admanager_init() {
+  drupal_add_js(drupal_get_path('module', 'gs_admanager') . '/js/gs_admanager.js', array('scope' => 'footer'));
+}
+
+/**
+ * Implements hook_menu().
+ */
+function gs_admanager_menu() {
+  $items = array();
+  $base = array(
+    'access arguments' => array('administer gs admanager'),
+    'file' => 'gs_admanager.admin.inc',
+  );
+  
+  $items['admin/config/system/google_admanager/attributes'] = $base + array(
+    'title' => 'Ad Attributes (In Development)',
+    'description' => 'Override Sitewide Default Ad Attributes',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('gs_admanager_admin_attributes_form'),
+    'type' => MENU_LOCAL_TASK,
+  );  
+  
+  //return $items;
+}
+
+/**
+ * Implements hook_page_alter().
+ */
+function gs_admanager_page_alter(&$page) {
+  if (path_is_admin(current_path())) {
+    return;
+  }
+  
+  $section_map = array();
+  if (module_exists('gs_helper')) {
+    $section_map = _gs_helper_section_tid_map();
+  }
+  $attribute_mapping = array(
+    'page-home'             => 'homepage',
+    'home_page'             => 'homepage',
+    'page-blogs'            => 'blogra-portal',
+    'blogs'                 => 'blogra',
+    'blog'                  => 'blogra',
+    'news'                  => 'news-and-views',
+    'food'                  => 'dining',
+    'golden-plates'         => 'golden_plates',
+    'life'                  => 'lifestyle',
+    'cartoons'              => 'news',
+    'tech-games'            => 'technology',
+    'page-i_saw_you'        => 'i_saw_you',
+    'page-confessions'      => 'confessions',
+    'page-contests'         => 'contests',
+    'contest'               => 'contests',
+    'content_classified_ad' => 'classifieds',
+    'page-classifieds'      => 'classifieds',
+    'page-classifieds_adult_classifieds' => array(
+      'classifieds',
+      'adult',
+    ),
+    'adult-services---gay'  => 'adult',
+    'adult-services'        => 'adult',
+    'product_display'       => 'store',
+    'page-store'            => 'store',
+  );
+  
+  $ad_attributes[] = 'ROS';
+  
+  $terms = array();
+  
+  // Check if it's a mapped Section
+  if (isset($section_map[current_path()])) {
+    $terms = taxonomy_get_parents_all($section_map[current_path()]['tid'][0]);
+  }
+  
+  // Check if it's a Page
+  if (module_exists('page_manager')) {
+    if($current_page = page_manager_get_current_page()) {
+      switch ($current_page['name']) {
+        case 'term_view':
+          if (isset($current_page['arguments'])) {
+            $terms = taxonomy_get_parents_all($current_page['arguments'][0]);
+            $ad_attributes[] = taxonomy_term_load($current_page['arguments'][0])->vocabulary_machine_name;
+          }
+          break;
+        default:
+          $ad_attributes[] = $current_page['name'];
+          break;
+      }
+    }
+  }
+  
+  // Check if it's a Node
+  // if (arg(0) == 'node' && ctype_digit(arg(1)) && count(arg()) == 2) {
+  if ($node = menu_get_object()) {
+    // $node = $page['content']['system_main']['nodes'][arg(1)]['#node'];
+    $ad_attributes[] = $node->nid;
+    $ad_attributes[] = $node->type;
+    
+    switch ($node->type) {
+      case 'article':
+        // Get the main section terms from article
+        $terms = field_get_items('node', $node, 'field_section');
+        $terms = taxonomy_get_parents_all(end(end($terms)));
+        // Get the crosspost section terms from blog
+        if ($crosspost_topics = field_get_items('node', $node, 'field_secondarysections')) {
+          foreach ($crosspost_topics as $crosspost_topic) {
+            $terms[] = taxonomy_term_load($crosspost_topic['tid']);
+          }
+        }
+        break;
+      case 'blog_post':
+        // Get the main section terms from blog
+        $terms = field_get_items('node', $node, 'field_blog_term');
+        $terms = taxonomy_get_parents_all(end(end($terms)));
+        
+        // Get the crosspost section terms from blog
+        if ($crosspost_topics = field_get_items('node', $node, 'field_crosspostingtags')) {
+          foreach ($crosspost_topics as $crosspost_topic) {
+            $terms[] = taxonomy_term_load($crosspost_topic['tid']);
+          }
+        }
+        break;
+      case 'contest':
+        $terms = field_get_items('node', $node, 'field_contest_category');
+        $terms = taxonomy_get_parents_all(end(end($terms)));
+        break;
+      case 'content_classified_ad':
+        $field_class_tax = field_get_items('node', $node, 'field_class_tax');
+        foreach ($field_class_tax as $term) {
+          $terms[] = taxonomy_term_load($term['tid']);
+        }
+        break;
+    }
+  }
+  
+  // Convert all the terms into machine readable attributes
+  if (isset($terms)) {
+    foreach ($terms as $term) {
+      // Quick check to make sure the term is an object because some legacy content 
+      // had terms that were not mapped correctly and pointed to a non-exitent term.
+      if (!is_object($term)) {
+        continue;
+      }
+      
+      // Blog topics need to be served to DFP in the format of 'blogra-term'
+      if ($term->vid == 5 && isset($term->parent) && isset($attribute_mapping[$term->vocabulary_machine_name])) {
+        if (is_array($attribute_mapping[$term->vocabulary_machine_name])) {
+          foreach ($attribute_mapping[$term->vocabulary_machine_name] as $key) {
+            $ad_attributes[] = _gs_admanager_convert_to_machinename($attribute_mapping[$term->vocabulary_machine_name] . '-' . $term->name);
+          }
+        }
+        if (is_string($attribute_mapping[$term->vocabulary_machine_name])) {
+          $ad_attributes[] = _gs_admanager_convert_to_machinename($attribute_mapping[$term->vocabulary_machine_name] . '-' . $term->name);
+        }
+      }
+      
+      $ad_attributes[] = _gs_admanager_convert_to_machinename($term->name);
+    }
+  }
+  
+  // Check attribute mapping and serve legacy tag as well
+  foreach ($ad_attributes as $attribute) {
+    if (isset($attribute_mapping[$attribute])) {
+      if (is_array($attribute_mapping[$attribute])) {
+        foreach ($attribute_mapping[$attribute] as $key) {
+          $ad_attributes[] = $key;
+        }
+      }
+      elseif (is_string($attribute_mapping[$attribute])) {
+        $ad_attributes[] = $attribute_mapping[$attribute];
+      }
+    }
+  }
+  
+  // Get rid of any duplicates in the array
+  $ad_attributes = array_unique($ad_attributes);
+  
+  // Store the Ad Attributes into the node for reference.
+  if (isset($node) && isset($node->field_google_ad_defaults)) {
+    $attribute_string = implode(', ', $ad_attributes);
+    
+    // Check if current Ad Attributes are the same as the one's stored.
+    if (!isset($node->field_google_ad_defaults[$node->language][0]['value'])) {
+      $node->field_google_ad_defaults[$node->language][0] = array(
+        'value' => '',
+        'format' => NULL,
+        'safe_value' => '',
+      );
+    }
+    
+    if (isset($node->field_google_ad_defaults[$node->language][0]['value']) && strcmp($node->field_google_ad_defaults[$node->language][0]['value'], $attribute_string)) {
+      $node->field_google_ad_defaults[$node->language][0]['value'] = $attribute_string;
+      $node->field_google_ad_defaults[$node->language][0]['safe_value'] = $attribute_string;
+      
+      node_save($node);
+    }
+  }
+  
+  // Check if node has Ad Attributes overriden.
+  if (isset($node) && isset($node->field_google_ad_attributes)) {
+    if (!empty($node->field_google_ad_attributes[$node->language][0]['value'])) {
+      $attribute_string = trim(preg_replace('/\s*,\s+/i', ',', $node->field_google_ad_attributes[$node->language][0]['value']));
+      
+      // Replace Ad Attributes with overriden values.
+      $ad_attributes = explode(',', $attribute_string);
+    }
+  }
+  
+  // Use googe_admanager to add all attributes to page
+  foreach ($ad_attributes as $attribute) {
+    google_admanager_add_attribute('Section', $attribute);
+  }
+}
+
+function gs_admanager_form_alter(&$form, &$form_state, $form_id) {
+  if ($form_id == 'google_admanager_admin_settings_form') {
+    // Unset google admanager's settings because these are handle by this module.
+    unset($form['google_admanager_nodetype_attributes']);
+    unset($form['google_admanager_vocab_attributes']);
+  }
+  
+  if (isset($form['field_google_ad_defaults'])) {
+    $form['field_google_ad_defaults']['#after_build'][] = '_readonly_component';
+    $form['field_google_ad_defaults']['#after_build'][] = '_disable_component';
+  }
+}
+
+/*************************************************************
+        HELPERS
+*************************************************************/
+
+/**
+ * Converts white space to a machine readable string.
+ *
+ * @param $string
+ *     The string you are converting.
+ * @param $seperator
+ *     The seperator to use. Default is -
+ *
+ * @return string
+ *    Returns the string, and false if none is found
+ */
+function _gs_admanager_convert_to_machinename($string) {
+  return preg_replace(array('/\.|&/', '/\s\s+/', '/\s/'), array('', ' ', '-'), strtolower($string));
+}
+
+/**
+ * Set the readonly attribute to element.
+ */
+function _readonly_component($element) {
+  $element[LANGUAGE_NONE][0]['value']['#attributes']['readonly'] = 'readonly';
+  return $element;
+}
+
+/**
+ * Set the disabled attribute to element.
+ */
+function _disable_component($element) {
+  $element[LANGUAGE_NONE][0]['value']['#attributes']['disabled'] = 'disabled';
+  return $element;
+}

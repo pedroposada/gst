@@ -1,0 +1,21 @@
+<?php
+
+/**
+ * @file
+ * Installation file for GS Media Browser module.
+ */
+
+/**
+ * Add new table indexes for better search performance.
+ */
+function gs_media_browser_update_7000() {
+	if (!db_index_exists('field_data_field_credit', 'field_credit_value')) {
+    db_add_index('field_data_field_credit', 'field_credit_value', array('field_credit_value'));
+  }
+	if (!db_index_exists('field_data_field_cutline', 'field_cutline_value')) {
+    db_add_index('field_data_field_cutline', 'field_cutline_value', array('field_cutline_value'));
+  }
+	if (!db_index_exists('file_managed', 'filename')) {
+    db_add_index('file_managed', 'filename', array('filename'));
+  }
+}

@@ -1,0 +1,58 @@
+<?php
+define('GS_SIMPLIFY_PATH', drupal_get_path('module', 'gs_simplify'));
+
+/*************************************************************
+				DRUPAL HOOKS
+*************************************************************/
+
+/**
+ * Implementation of hook_init();
+ */
+function gs_simplify_init() {
+  //add css & javascript
+  drupal_add_css(GS_SIMPLIFY_PATH . '/css/gs_simplify.css');
+  drupal_add_js(GS_SIMPLIFY_PATH . '/js/gs_simplify.js');
+}
+
+/**
+ * Implementation of hook_form_alter();
+ */
+function gs_simplify_form_alter(&$form, &$form_state, $form_id) {
+  $types = node_type_get_names();
+  $types = implode('|', array_keys($types));
+  
+  if (preg_match('/^(' . $types . ')_node_form$/i', $form_id)) {
+    $form['#after_build'][] = 'gs_simplify_node_form_after_build';
+  }
+}
+
+/*************************************************************
+        FORMS
+*************************************************************/
+
+/**
+ * After-build handler for node forms;
+ */
+function gs_simplify_node_form_after_build($form, $form_state) {
+  /*
+  // remove text-formatting related options from the body, while
+  // forcing full_html
+  unset($form['body']['und'][0]['format']['help']);  
+  unset($form['body']['und'][0]['format']['guidelines']);
+  
+  $form['body']['und'][0]['format']['format']['#default_value'] = 'full_html';
+  $form['body']['und'][0]['format']['format']['#value']         = 'full_html';
+  $form['body']['und'][0]['format']['#prefix']        = '<div style="display: none;">';
+  $form['body']['und'][0]['format']['#suffix']        = '</div>';
+  
+  // unset($form['body']['und'][0]['format']['format']['#options']);
+  
+  // print_rr($form['body']['und'][0]['format']['format']);exit();
+  */
+  return $form;
+}
+
+/*************************************************************
+				HELPERS
+*************************************************************/
+

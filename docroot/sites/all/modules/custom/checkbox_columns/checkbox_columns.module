@@ -1,0 +1,230 @@
+<?php
+
+/*************************************************************
+				DRUPAL HOOKS
+*************************************************************/
+
+/**
+ * Implementation of hook_form_alter();
+ */
+function checkbox_columns_form_alter(&$form, &$form_state, $form_id) {
+  $types = node_type_get_names();
+  $types = implode('|', array_keys($types));
+  
+  if (preg_match('/^(' . $types . ')_node_form$/i', $form_id)) {
+    // TODO: language support
+    
+    $settings = variable_get('checkbox_columns', array());
+    
+    if (!empty($settings[$form['type']['#value']])) {
+      foreach ($settings[$form['type']['#value']] as $field_name => $enable_checkbox_columns) {
+        if ($enable_checkbox_columns && isset($form[$field_name])) {
+          if (!empty($form[$field_name]['und']['#options'])) {
+            $form_state['checkbox_columns_fields'][$field_name] = $field_name . '_checkbox_columns';
+
+            // build the table element            
+            $element = array(
+              '#type'     => 'tableform',
+              '#title'    => $form[$field_name]['und']['#title'],
+              '#required' => $form[$field_name]['und']['#required'],
+              '#header'   => array(
+              
+              ),
+              '#options'  => array(
+                
+              ),
+            );
+            
+            $column = '';
+            $row = 0;
+            
+            // set up tableform w/ checkbox data
+            foreach ($form[$field_name]['und']['#options'] as $key => $value) {
+              $default = in_array($key, $form[$field_name]['und']['#default_value']);
+              
+              // make columns
+              if ($value[0] !== '-') {
+                $column = $form_state['checkbox_columns_fields'][$field_name] . '_' . $key;
+                $row = 0;
+                
+                $form_state['checkbox_columns_map'][$column] = $key;
+                
+                $element['#header'][$column] = array(
+                  '#type'           => 'checkbox',
+                  '#title'          => $value,
+                  '#default_value'  => $default,
+                );
+              }
+              // make rows
+              else {
+                foreach ($element['#header'] as $header_key => $header_value) {
+                  $column_key = $header_key . '_' . $row;
+                  
+                  // fill in empty cells
+                  if ($header_key !== $column) {
+                    if (!isset($element['#options'][$row][$column_key])) {
+                      $element['#options'][$row][$column_key] = '';
+                    }
+                  }
+                  // fill in normal cells
+                  else {
+                    $value = trim($value, '-');
+                    
+                    $form_state['checkbox_columns_map'][$column_key] = $key;
+                    
+                    $element['#options'][$row][$column_key] = array(
+                      '#type'           => 'checkbox',
+                      '#title'          => $value,
+                      '#default_value'  => $default,
+                    );
+                  }
+                }
+                
+                $row++;
+              }
+            }
+    
+            // fill in left-over empty cells
+            $columns = sizeof($element['#header']);
+            foreach ($element['#options'] as $row => $row_data) {
+              $row_size = sizeof($row_data);
+              
+              if ($row_size < $columns) {
+                for ($i = $row_size; $i < $columns; $i++) {
+                  $element['#options'][$row][] = '';
+                }
+              }
+            }
+            
+            // hide original field & replace it with the new one
+            $new_form = array();
+            
+            foreach ($form as $f_key => $f_value) {
+              if ($f_key != $field_name) {
+                $new_form[$f_key] = $f_value;
+              }
+              else {
+                // set new element's weight to that of the old element and add it to the form
+                if (isset($f_value['#weight'])) {
+                  $element['#weight'] = $f_value['#weight'];
+                }
+                
+                $new_form[$form_state['checkbox_columns_fields'][$field_name]] = $element;
+                
+                // hide the old element via CSS and add it back to the form
+                $f_value['#prefix'] = '<div style="display: none">';
+                $f_value['#suffix'] = '</div>';
+                
+                $new_form[$f_key] = $f_value; 
+              }
+            }
+            
+            $form = $new_form;
+          }
+        }
+      }
+    }
+
+    array_unshift($form['#submit'], 'checkbox_columns_node_form_submit');
+  }
+  elseif ($form_id == 'field_ui_field_edit_form') {
+    // configuration option to enable/disable converting a regular checkboxes field to
+    // Checkbox Columns
+    $settings = variable_get('checkbox_columns', array());
+    
+    $default  = 0;
+    $bundle   = $form['#instance']['bundle']; 
+    $field    = $form['#instance']['field_name'];
+    
+    if (isset($settings[$bundle][$field])) {
+      $default = $settings[$bundle][$field];
+    }
+    
+    // add option to enable displaying regular list of checkboxes as Checkbox Columns
+    $desc = 'If set, this field will be converted to a table containing each top-level option
+             as a column header, and all children as subsequent rows within the same column. 
+             !limitations';
+    
+    $lim  = '<br /><br /><strong>' . t('LIMITATIONS:') . '</strong> ';
+    $lim .= t("1) Field cannot contain children more than one level deep. 2) Children's names should not being with -.");
+    
+    $form['instance']['checkbox_column'] = array(
+      '#type'           => 'checkbox',
+      '#title'          => t('Convert to Checkbox Columns'),
+      '#weight'         => $form['instance']['required']['#weight'] + 1,
+      '#description'    => t($desc, array('!limitations' => $lim,)),
+      '#default_value'  => $default,
+    );
+    
+    // add submit handler to process above option
+    $form['#submit'][] = 'checkbox_columns_field_ui_field_edit_form_submit'; 
+  }
+}
+
+/**
+ * Implementation of hook__field_delete_instance;
+ */
+function checkbox_columns_field_delete_instance($field) {
+  // remove field from our settings when it gets deleted
+  $settings = variable_get('checkbox_columns', array());
+  
+  unset($settings[$field['bundle']][$field['field_name']]);
+  
+  variable_set('checkbox_columns', $settings);
+}
+  
+/*************************************************************
+        MODULE HOOKS
+*************************************************************/
+
+/*************************************************************
+        CALLBACKS
+*************************************************************/
+
+/*************************************************************
+        FORMS
+*************************************************************/
+
+/**
+ * Submit handler for node add/edit forms;
+ */
+function checkbox_columns_node_form_submit(&$form, &$form_state) {
+  if (isset($form_state['checkbox_columns_fields']) && !empty($form_state['checkbox_columns_fields'])) {
+    // remove existing taxonomy data
+    $form_state['values']['field_section']['und'] = array();
+    
+    foreach ($form_state['checkbox_columns_fields'] as $field_name => $columns_field) {
+      foreach ($form_state['values'] as $key => $value) {
+        if ($value && preg_match('/^' . $columns_field . '/', $key)) {
+          // populate the taxonomy data with our data from the Checkbox Columns table
+          // taxonomy will pick this up and process it like a normal taxonomy field
+          $form_state['values']['field_section']['und'][] = array(
+            'tid' => $form_state['checkbox_columns_map'][$key],
+          );
+        }
+      }  
+    }
+  }
+}
+ 
+/**
+ * Submit handler for field_ui_field_edit_form();
+ */
+function checkbox_columns_field_ui_field_edit_form_submit(&$form, &$form_state) {
+  $settings = variable_get('checkbox_columns', array());
+  
+  $bundle = $form_state['values']['instance']['bundle'];
+  $field  = $form_state['values']['instance']['field_name'];
+  
+  $settings[$bundle][$field] = $form_state['values']['instance']['checkbox_column']; 
+  
+  variable_set('checkbox_columns', $settings);
+}
+
+/*************************************************************
+        THEMING
+*************************************************************/
+
+/*************************************************************
+        HELPERS
+*************************************************************/

@@ -1,0 +1,7 @@
+name = Checkbox Columns
+description = Allows a nested hierarchy of checkboxes to be displayed in columns.
+project = "checkbox_columns"
+package = "custom"
+version = "7.x-1.0"
+core = "7.x"
+dependencies[] = tableform

@@ -1,0 +1,6 @@
+name = GS Simplify
+description = Provides simplification improvements to the UI.
+project = "gs_simplify"
+package = "custom"
+version = "7.x-1.0"
+core = "7.x"

@@ -1,0 +1,9 @@
+name = GS Social Media
+description = Premade Social Media widgets for Georgia Straight.
+project = "gs_socialmedia"
+package = "custom"
+version = "7.x-1.0"
+core = "7.x"
+dependencies[] = widgets
+dependencies[] = print
+dependencies[] = forward

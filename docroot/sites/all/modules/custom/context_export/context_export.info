@@ -1,0 +1,7 @@
+name = Context Export
+description = Provides option to easily export all Contexts to code.
+project = "context_export"
+package = "custom"
+version = "7.x-1.0"
+core = "7.x"
+dependencies[] = context

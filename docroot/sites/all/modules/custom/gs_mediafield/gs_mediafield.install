@@ -1,0 +1,23 @@
+<?php
+
+
+/**
+ * Implements hook_field_schema()
+ */
+function gs_mediafield_field_schema($field){
+  if ($field['type'] == 'gs_mediafield') {
+    $columns = array(
+      'uri' => array(),
+      'cutline' => array(),
+      'cutline_link' => array(),
+      'credit' => array(),
+      'credit_link' => array(),
+    );
+    $indexes = array(
+    );
+    return array(
+      'columns' => array(),
+      'indexes' => array(),
+    );
+  }
+}

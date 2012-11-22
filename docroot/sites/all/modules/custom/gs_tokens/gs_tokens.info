@@ -1,0 +1,7 @@
+name = GS Tokens
+description = Custom tokens used for Georgia Straight.
+project = "gs_token"
+package = "custom"
+version = "7.x-1.0"
+core = "7.x"
+dependencies[] = gs_helper

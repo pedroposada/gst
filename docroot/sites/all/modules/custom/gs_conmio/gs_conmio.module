@@ -1,0 +1,683 @@
+<?php
+
+/*************************************************
+ * MODULE INCLUDE FILES
+ *************************************************/
+
+module_load_include('inc', 'gs_conmio', 'gs_conmio.rss');
+
+/*************************************************
+ * DRUPAL HOOKS
+ *************************************************/
+
+/**
+ * Implements hook_permission()
+ */
+function gs_conmio_permission() {
+  return array(
+    'conmio authentication' => array(
+      'title' => t('Use Conmio Authentication'), 
+      'description' => t('Authenticate request from Conmio before serving content.'),
+    ),
+  );
+}
+
+/**
+ * Implements hook_menu()
+ */
+function gs_conmio_menu() {
+  $items['api/isawyou'] = array(
+    'title' => 'API Call',
+    'page callback' => 'gs_conmio_apijson',
+    'page arguments' => array(1),
+    'access callback' => '_gs_conmio_apiaccess',
+    'type' => MENU_CALLBACK,
+  );
+  $items['timeout/rss/export/isawyou'] = array(
+    'title' => 'API Call',
+    'page callback' => 'gs_conmio_rss',
+    'page arguments' => array(3),
+    'access callback' => '_gs_conmio_apiaccess',
+    'type' => MENU_CALLBACK,
+  );
+  $items['timeout/rss/export/search/articles/%'] = array(
+    'title' => 'API Call',
+    'page callback' => 'gs_conmio_rss',
+    'page arguments' => array(4,5),
+    'access callback' => '_gs_conmio_apiaccess',
+    'type' => MENU_CALLBACK,
+  );
+  $items['api/confession'] = array(
+    'title' => 'API Call',
+    'page callback' => 'gs_conmio_apijson',
+    'page arguments' => array(1),
+    'access callback' => '_gs_conmio_apiaccess',
+    'type' => MENU_CALLBACK,
+  );
+  $items['api/auth'] = array(
+    'title' => 'API Call',
+    'page callback' => 'gs_conmio_apijson',
+    'page arguments' => array(1),
+    'access callback' => '_gs_conmio_apiaccess',
+    'type' => MENU_CALLBACK,
+  );
+  $items['api/user_create'] = array(
+    'title' => 'API Call',
+    'page callback' => 'gs_conmio_apijson',
+    'page arguments' => array(1),
+    'access callback' => '_gs_conmio_apiaccess',
+    'type' => MENU_CALLBACK,
+  );
+  $items['api/comment'] = array(
+    'title' => 'API Call',
+    'page callback' => 'gs_conmio_apijson',
+    'page arguments' => array(1),
+    'access callback' => '_gs_conmio_apiaccess',
+    'type' => MENU_CALLBACK,
+  );
+  $items['api/contestEntry'] = array(
+    'title' => 'API Call',
+    'page callback' => 'gs_conmio_apijson',
+    'page arguments' => array(1),
+    'access callback' => '_gs_conmio_apiaccess',
+    'type' => MENU_CALLBACK,
+  );
+  $items['timeout/rss/export/comments/%'] = array(
+    'title' => 'Legacy Comments RSS Feed Redirect',
+    'page callback' => 'gs_conmio_redirect',
+    'page arguments' => array(3, 4),
+    'access callback' => TRUE, // TRUE for now until _gs_conmio_apiaccess is ready to be tested.
+    'type' => MENU_CALLBACK,
+  );
+  $items['timeout/rss/export/article/%'] = array(
+    'title' => 'Legacy Single Article RSS Feed Redirect',
+    'page callback' => 'gs_conmio_redirect',
+    'page arguments' => array(3, 4),
+    'access callback' => TRUE, // TRUE for now until _gs_conmio_apiaccess is ready to be tested.
+    'type' => MENU_CALLBACK,
+  );
+  
+  return $items;
+}
+
+/*************************************************
+ * MENU CALLBACKS
+ *************************************************/
+
+/**
+ * Callback for: 
+ *    api/isawyou
+ *    api/confession
+ *    api/auth
+ *    api/user_create
+ *    api/comment
+ * 
+ * @param $type
+ *    element in url path
+ * 
+ * @return prints out JSON
+ *    'success': boolean
+ *    'errors': array of error messages
+ *    'user_data': user object; only for auth or user_create
+ */ 
+function gs_conmio_apijson($type) {
+  // debug
+  gs_conmio_log('gs_conmio', "$type REQUEST in gs_conmio_apijson <pre>".print_r($_REQUEST,1)."</pre>");
+  $response = array('success' => FALSE, 'errors' => array());
+  
+  switch ($type) {
+      
+    // api/isawyou
+    case 'isawyou':
+      // map conmio parameters to drupal
+      $mappings = array(
+        'uid' => array(
+          'name'=>'uid',
+          'error'=>'You must be logged in to add an I Saw You ad.',
+        ),
+        'title' => array(
+          'name'=>'title',
+          'error'=>'You must provide a headline.',
+        ),
+        'location' => array(
+          'name' => 'field_where_did_you_see_this_per',
+          'error' => 'You must provide a location.',
+        ),
+        'description' => array(
+          'name' => 'body',
+          'error' => 'You must provide a description.',
+        ),
+        'i_am_gender' => array(
+          'name' => 'field_i_am_a',
+          'error' => 'You must provide your gender.',
+        ),
+        'i_saw_gender' => array(
+          'name' => 'field_i_saw_a',
+          'error' => 'You must provide the gender of the person you saw.',
+        ),
+        'date' => array(
+          'name' => 'field_what_date_did_you_see_them',
+          'error' => 'Date is required.',
+        ),
+      );
+      _gs_conmio_createnode($mappings, 'i_saw_you', $_REQUEST, $response);
+      break;
+    
+    // api/confession
+    case 'confession':
+      // map conmio parameters to drupal
+      $mappings = array(
+        'title' => array(
+          'name'=>'title',
+          'error'=>'You must provide a headline.',
+        ),
+        'description' => array(
+          'name' => 'body',
+          'error' => 'You must provide a description.',
+        ),
+      );
+      _gs_conmio_createnode($mappings, 'confession', $_REQUEST, $response);
+      break;
+    
+    // api/auth
+    case 'auth':
+      // Test from terminal:
+      // curl -d "name=YOURUSERNAME&pass=YOURPASSWORD" http://www.straight.com/api/auth
+      if (isset($_POST['name'],$_POST['pass'])) {
+        if ($uid = user_authenticate($_POST['name'],$_POST['pass'])) {
+          $response['success'] = TRUE;
+          $response['user_data'] = user_load($uid);
+        }
+      } else {
+        $response['errors'][] = "Invalid username or password.";
+      }
+      break;
+    
+    // api/user_create
+    case 'user_create':
+      // Test from terminal:
+      // curl -d "name=YOURUSERNAME&pass=YOURPASSWORD&pass_confirm=YOURPASSWORD&email=YOUREMAIL&email_confirm=YOUREMAIL" http://www.straight.com/api/user_create
+      foreach (array('name','pass','pass_confirm','email','email_confirm') as $key) {
+        isset($_POST[$key]) ? $VALS[$key] = $_POST[$key] : $VALS[$key] = NULL;
+      }
+      if (empty($VALS['name'])) {
+        $response['errors'][] = "Username is required.";
+      }
+      if (!isset($VALS['pass'],$VALS['pass_confirm'])) {
+        $response['errors'][] = "Password is required.";
+      }
+      if ($VALS['pass'] != $VALS['pass_confirm']) {
+        $response['errors'][] = "Password and password confirmation do not match.";
+      }
+      if (isset($VALS['name']) && user_load_by_name($VALS['name'])->uid) {
+        $response['errors'][] = "User already exists.";
+      }
+      if (!valid_email_address($VALS['email'])) {
+        $response['errors'][] = "Email address is invalid";
+      }
+      if ($VALS['email'] != $VALS['email_confirm']) {
+        $response['errors'][] = "Email and email confirmation do not match.";
+      }
+      if (!count($response['errors'])) {
+        $new_user = array(
+          'name' => $VALS['name'],
+          'pass' => $VALS['pass'],
+          'mail' => $VALS['email'],
+          'init' => $VALS['email'],
+          'status' => 1,
+          'access' => REQUEST_TIME,
+        );
+        if ($account = user_save(NULL, $new_user)) {
+          $response['success'] = TRUE;  
+          $response['user_data'] = $account;  
+        } else {
+          $response['errors'][] = "There was a technical problem creating your account. Please try again later.";
+        }
+      }
+      break;
+    
+    // api/comment
+    // Examples:
+    // User not logged in to mobile:
+    // curl -d "author=Hobo Rick&comment=badger badger badger&nid=330345&ip_address=1.2.3.4" http://www.straight.com/api/comment
+    // User logged in to mobile:
+    // curl -d "uid=546&comment=i watch the cat&nid=30345&ip_address=1.2.3.4" http://www.straight.com/api/comment
+    case 'comment':
+      foreach (array('uid','author','comment','nid','ip_address') as $key) {
+        isset($_POST[$key]) ? $VALS[$key] = $_POST[$key] : $VALS[$key] = NULL;
+      }
+      // if not logged in and no name...
+      if (!isset($VALS['uid'],$VALS['author'])) {
+        $response['errors'][] = "Please enter your name.";
+      }
+      // if attempting to comment without being logged in...
+      if (!isset($VALS['uid']) && ($account = user_load_by_name($VALS['author']))) {
+        $response['errors'][] = "That name is taken by a registered user. Please log in if you are this user.";
+      }
+      // if commenting while logged in, check that user exists
+      if (isset($VALS['uid']) && $account = user_load($VALS['uid'])) {
+        if (!$account->uid) {
+          $response['errors'][] = "User not found.";
+        }
+      }
+      // don't allow empty comments...
+      if (empty($VALS['comment'])) {
+        $response['errors'][] = "Your comment is empty.";
+      }
+      // comments must be associated with articles
+      if (!isset($VALS['nid'])) {
+        $response['errors'][] = "That post does not exist.";
+      }
+      // comments must be associated with articles
+      if (isset($VALS['nid']) && !$node = node_load($VALS['nid'])) {
+        $response['errors'][] = "That post does not exist.";
+      }
+      // check of no errors and save comment
+      if (!count($response['errors'])) {
+        $comment = (object) array(
+          'nid' => $VALS['nid'],
+          'cid' => 0,
+          'pid' => 0,
+          'uid' => isset($account->uid) ? $account->uid : 0,
+          'mail' => isset($account->mail) ? $account->mail : '',
+          'is_anonymous' => isset($account->uid) ? 0 : 1,
+          'homepage' => '',
+          'status' => COMMENT_NOT_PUBLISHED,
+          'subject' => '',
+          'language' => LANGUAGE_NONE,
+          'hostname' => $VALS['ip_address'],
+          'comment_body' => array(
+            LANGUAGE_NONE => array(
+              0 => array (
+                'value' => text_summary($VALS['comment'],NULL,2400),
+                'format' => 'plain_text'
+              )
+            )
+          ),
+          'field_yourname' => array(
+            LANGUAGE_NONE => array(
+              0 => array (
+                'value' => isset($account->name) ? $account->name : $VALS['author'],
+              )
+            )
+          ),
+        );
+        comment_submit($comment);
+        comment_save($comment);
+        if ($comment->cid) {
+          $response['success'] = TRUE;
+        } else {
+          $response['errors'][] = "Your comment could not be saved. Please try again later.";
+        }
+      }
+      break;
+      
+    // api/contestEntry
+    case 'contestEntry':
+      gs_conmio_contestsubmit($response, $_REQUEST);  
+      break;
+  }
+  
+  drupal_json_output($response);
+  exit;
+}
+
+/**
+ * Callback for:
+ *    timeout/rss/export/isawyou
+ *    timeout/rss/export/search/articles/%
+ * 
+ * @param $type
+ *    element in url path
+ * @param $search
+ *    term to search
+ * 
+ * @return prints out xml rss feed and sets http header for xml
+ */
+function gs_conmio_rss($type, $search = null) {
+  // debug
+  gs_conmio_log('gs_conmio', "$type REQUEST in gs_conmio_rss <pre>".print_r($_REQUEST,1)."</pre>");
+  $rss_output = $node_type_human = '';
+  
+  switch ($type) {
+    
+    // timeout/rss/export/isawyou
+    case 'isawyou':
+      $vars['type'] = 'i_saw_you';
+      $node_type_human = 'I Saw You';
+      $nodes = gs_conmio_getnodes($vars);
+      foreach ($nodes as $key => $entity) {
+        $extra = array();
+        $extra[] = array(
+          'key' => 'guid',
+          'value' => $key,
+          'attributes' => array('isPermaLink' => 'false')
+        );
+        $extra[] = array(
+          'key' => 'dc:seeker',
+          'value' => $entity->field_i_am_a[LANGUAGE_NONE][0]['value'],
+        );
+        $extra[] = array(
+          'key' => 'dc:seekerfor',
+          'value' => $entity->field_i_saw_a[LANGUAGE_NONE][0]['value'],
+        );
+        $extra[] = array(
+          'key' => 'dc:date',
+          'value' => substr($entity->field_what_date_did_you_see_them[LANGUAGE_NONE][0]['value'], 0, 10),
+        );
+        $extra[] = array(
+          'key' => 'dc:where',
+          'value' => $entity->field_where_did_you_see_this_per[LANGUAGE_NONE][0]['value'],
+        );
+        // image
+        if ($image = field_get_items('node', $entity, 'field_image')) {
+          $extra[] = array(
+            'key' => 'dc:image',
+            'value' => file_create_url($image[0]['uri']),
+          );
+        }
+        $rss_output .= format_rss_item($entity->title, url('node/'. $entity->nid, array('absolute' => TRUE)), $entity->body[LANGUAGE_NONE][0]['value'], $extra);
+      }
+      break;
+      
+    // timeout/rss/export/search/articles/SEARCHTERM
+    case 'articles':
+      $vars['type'] = 'article';
+      $vars['searchterm'] = filter_xss($search,array());
+      $node_type_human = 'Article Search';
+      $vars['type'] = 'article';
+      $vars['searchterm'] = check_plain($search);
+      $node_type_human = 'Article';
+      $nodes = gs_conmio_getnodes($vars);
+      foreach ($nodes as $key => $entity) {
+        $extra = array();
+        $extra[] = array(
+          'key' => 'guid',
+          'value' => $key,
+          'attributes' => array('isPermaLink' => 'false')
+        );
+        $body = text_summary(filter_xss($entity->body[LANGUAGE_NONE][0]['value'],array()),NULL,100) . " ...";
+        $rss_output .= format_rss_item($entity->title, url('node/'. $entity->nid, array('absolute' => TRUE)), $body, $extra);
+      }
+      break;
+  }
+  $channel = gs_conmio_rss_channel(url(current_path(),array('absolute' => TRUE)), $node_type_human);
+  
+  gs_conmio_rss_output($channel, $rss_output);
+}
+
+function gs_conmio_redirect($type, $id) {
+  switch ($type) {
+    case 'article':
+      drupal_goto('rss/conmio/feed/node/' . $id);
+      break;
+    case 'comments':
+      drupal_goto('rss/conmio/feed/comments/' . $id);
+      break;
+  }
+}
+
+/*************************************************
+ * ACCESS CALLBACK
+ * ***********************************************/
+
+/**
+ * authenticate request
+ */
+function _gs_conmio_apiaccess() {
+  // return $_SERVER['HTTP_HOST'] == ;
+  
+  return TRUE;
+}
+
+/***************************************************
+ * HELPERS 
+ ***************************************************/
+
+/**
+ * Node creator, adds a new node to the database, checks for user permissions
+ * 
+ * @param $mappings
+ *    array of conmio parameters mapped to drupal parameters
+ * @param $type
+ *    the node type
+ * @param $source
+ *    source array with values, keys need to match $mappings keys
+ * @param &$response
+ *    array passed by reference with errors and success values (true or false)
+ * 
+ * @return void
+ */
+function _gs_conmio_createnode($mappings, $type, $source, &$response) {
+  // prepare empty node
+  $node = new stdClass();
+  $node->type = $type;
+  node_object_prepare($node);
+  $node->language = LANGUAGE_NONE;
+  // fill in and validate node values
+  foreach ($mappings as $key => $value) {
+    if (isset($source[$key])) {
+      switch ($value['name']) {
+        case 'body':
+          $node->{$value['name']}[$node->language][0]['value']   = check_plain($source[$key]);
+          $node->{$value['name']}[$node->language][0]['summary'] = text_summary(check_plain($source[$key]));
+          $node->{$value['name']}[$node->language][0]['format']  = 'plain_text';
+          break;
+        case 'field_what_date_did_you_see_them':
+          $matches = array();
+          $date = NULL;
+          if (preg_match('/(\d\d\d\d)-(\d\d)-(\d\d)/', $source[$key], $matches)) {
+            if (checkdate($matches[2], $matches[3], $matches[1])) {
+              $date = $source[$key];
+            }
+          }
+          ($date ? $node->{$value['name']}[$node->language][0]['value'] = $date : $response['errors'][] = "Invalid date.");
+          break;
+        case 'field_i_am_a':
+        case 'field_i_saw_a':
+          if (in_array($source[$key], array('Male','Female'))) {
+            $node->{$value['name']}[$node->language][0]['value'] = text_summary(check_plain($source[$key]),'plain_text',255);
+          } else {
+            $response['errors'][] = "Invalid Gender.";
+          }
+          break;
+        case 'uid':
+          $account = user_load($source[$key]);
+          if (is_object($account) && user_access("create $type content", $account)) {
+            $node->{$value['name']} = $source[$key];
+          } else {
+            $response['errors'][] = "You do not have the proper permissions for this request.";
+          }
+          break;
+        case 'title':
+          $node->{$value['name']} = text_summary(check_plain($source[$key]),'plain_text',255);
+          break;
+        default:
+          $node->{$value['name']}[$node->language][0]['value'] = text_summary(check_plain($source[$key]),'plain_text',255);
+          break;
+      }
+    } else {
+      $response['errors'][] = $value['error'];
+    }
+  }
+  // save node
+  if (!count($response['errors'])) {
+    node_save($node);
+    if (isset($node->nid)) {
+      $response['success'] = TRUE;
+    } else {
+      $response['errors'][] = "There was a problem with this operation. Please try again later.";
+    }
+  }
+  // debug
+  gs_conmio_log('gs_conmio', "$type REQUEST <pre>".print_r($source,1)."</pre>");
+  gs_conmio_log('gs_conmio', "$type node <pre>".print_r($node,1)."</pre>");
+}
+
+/**
+ * RSS Channel
+ * 
+ * @param $link
+ *    url for this rss feed
+ * @param $substitute
+ *    The Georgia Straight - $substitute
+ *    defaults to empty
+ * @param $description
+ * 
+ * @return $channel
+ *    array with rss channel details
+ */
+function gs_conmio_rss_channel($link, $subtitle = '', $description = '') {
+
+  $channel = array(
+    'title'       => 'The Georgia Straight',
+    'link'        => $link,
+    'description' => '',
+  );
+
+  $channel['title'] .= strlen($subtitle) ? ' - '. ucwords($subtitle) : '';
+
+  // the below defaults are likely unnecessary... delete them then test
+  $channel_defaults = array(
+    'version'     => '2.0',
+    'title'       => variable_get('site_name', 'drupal') .' - '. variable_get('site_slogan', ''),
+    'link'        => $base_url,
+    'description' => variable_get('site_mission', ''),
+    'language'    => $GLOBALS['locale'],
+  );
+
+  return array_merge($channel_defaults, $channel);
+}
+
+/**
+ * Output RSS feed
+ * 
+ * @param $channel
+ *    array with rss channel details
+ * @param $rss_output
+ *    rss feed items
+ * 
+ * @return $output
+ *    prints out the complete rss feed and sets the http header for xml
+ */
+function gs_conmio_rss_output($channel, $rss_output) {
+  global $base_url;
+  $output = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n";
+  $output .= "<rss version=\"". $channel["version"] . "\" xml:base=\"". $base_url ."\" ". 'xmlns:dc="http://purl.org/dc/elements/1.1/"' .">\n";
+  $output .= format_rss_channel($channel['title'], $channel['link'], $channel['description'], $rss_output, $channel['language']);
+  $output .= "</rss>\n";
+  drupal_add_http_header('Content-Type','text/xml; charset=utf-8');
+  print $output;
+  exit;
+}
+/**
+ * Get array of node objects, can be filtered by parameters
+ * 
+ * @param $vars
+ *    array of parameters 
+ *    usage example: $vars = array('type'=>'i_saw_you','gender_of_user'=>'Male');
+ * 
+ * @return $nodes
+ *    Returns an array of node objects keyed with nids (50 nodes by default)
+ */
+function gs_conmio_getnodes($vars) {
+  $nodes = array();
+
+  if (isset($vars['type'])) {
+    isset($vars['limit']) ? NULL : $vars['limit'] = 50;
+    try {
+      $query = new EntityFieldQuery();
+      $query->entityCondition('entity_type', 'node')
+        ->entityCondition('bundle', $vars['type'])
+        ->propertyCondition('status', 1);
+      // conditions
+      switch ($vars['type']) {
+        case 'i_saw_you':
+          isset($vars['gender_of_user']) ? $query->fieldCondition('field_i_am_a', 'value', $vars['gender_of_user']) : NULL;
+          isset($vars['gender_seen']) ? $query->fieldCondition('field_i_saw_a', 'value', $vars['gender_seen']) : NULL;
+          isset($vars['date']) ? $query->fieldCondition('field_what_date_did_you_see_them', 'value', $vars['date']) : NULL;
+          isset($vars['location']) ? $query->fieldCondition('field_where_did_you_see_this_per', 'value', $vars['location'], 'CONTAINS') : NULL;
+          break;
+        case 'article':
+          isset($vars['searchterm']) ? $query->propertyCondition('title', $vars['searchterm'], 'CONTAINS',0) : NULL;
+          isset($vars['searchterm']) ? $query->fieldCondition('body', 'value', $vars['searchterm'], 'CONTAINS',0) : NULL;
+          break;
+      }
+      $query->range(0, $vars['limit']);
+      $query->propertyOrderBy('created', 'DESC');
+      $result = $query->execute();
+      if (isset($result['node'])) {
+        $nids = array_keys($result['node']);
+        $nodes = entity_load('node', $nids);
+      }
+    } catch(Exception $e) {
+      watchdog_exception('gs_conmio', $e);
+    }
+  }
+  
+  return $nodes;
+}
+
+/**
+ * Submit a webform
+ * 
+ * @param $response
+ *    pass response array by reference
+ * 
+ * @return void
+ */
+function gs_conmio_contestsubmit(&$response, $VALUES = NULL) {
+  $form_state = array();
+  $user_id = 0;
+  $webform_node_id = (isset($VALUES['multiformid']) ? $VALUES['multiformid'] : 0);
+  $webform_vals = (isset($VALUES['multiforms_view']) ? $VALUES['multiforms_view'] : NULL);
+  if ($node = node_load($webform_node_id)) {
+    // load webform components
+    module_load_include('inc', 'webform', 'includes/webform.submissions');
+    $submitted = array();
+    foreach ($node->webform['components'] as $cid => $component) {
+      if (isset($webform_vals[$cid]) && !empty($webform_vals[$cid])) {
+        $submitted[$cid] = filter_xss($webform_vals[$cid]);  
+      } elseif ($component['mandatory']) {
+        $response['errors'][] = "{$component['name']} is required.";  
+      }
+      // check for consent box
+      if (isset($VALUES['add_to_newsletter']) && $VALUES['add_to_newsletter'] && ($component['type'] == 'consent')) {
+        $submitted[$cid] = 1;
+      }
+    }
+    // Create a new submission object.
+    if (!count($response['errors'])) {
+      $submission = (object) array(
+        'nid' => $node->nid,
+        'uid' => 0,
+        'submitted' => REQUEST_TIME,
+        'remote_addr' => ip_address(),
+        'is_draft' => 0,
+        'data' => webform_submission_data($node, $submitted),
+      );
+      if ($sid = webform_submission_insert($node, $submission)) {
+        $response['success'] = TRUE; 
+      } else {
+        $response['errors'][] = "There was a problem with this operation. Please try again later.";
+      }
+    }
+  } else {
+    $response['errors'][] = "This contest doesn't exist.";
+  }
+  gs_conmio_log('gs_conmio', 'contest $form_state <pre>'.print_r($response,1).'</pre>');
+}
+
+/**
+ * Custom logging function for debugging
+ * Drush command to enable log: dursh vset gs_conmio_log 1
+ * Drush command to disable log: dursh vset gs_conmio_log 0
+ * Set this to 0 in production.
+ * 
+ * @param see watchdog()
+ */
+function gs_conmio_log($type, $message, $variables = array(), $severity = WATCHDOG_NOTICE, $link = NULL) {
+  if (variable_get('gs_conmio_log',0)) {
+    watchdog($type, $message, $variables, $severity, $link);
+  }
+}

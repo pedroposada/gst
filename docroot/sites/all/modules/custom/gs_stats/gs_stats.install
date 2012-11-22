@@ -1,0 +1,16 @@
+<?php
+
+/**
+ * Implementation of hook_uninstall();
+ */
+function gs_stats_uninstall() {
+  
+}
+
+/**
+ * Implementation of hook_schema();
+ */
+function abc_gs_stats_schema() {
+
+  return $schema;
+}

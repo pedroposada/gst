@@ -1,0 +1,6 @@
+name = GS Debug
+description = Debugging helpers.
+project = "gs_debug"
+package = "custom"
+version = "7.x-1.0"
+core = "7.x"

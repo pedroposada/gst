@@ -1,0 +1,6 @@
+name = Term Drag & Drop
+description = Adds new "Term Drag & Drop" widget for taxonomy term fields.
+project = "term_dd"
+package = "custom"
+version = "7.x-1.0"
+core = "7.x"

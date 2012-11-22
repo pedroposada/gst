@@ -1,0 +1,7 @@
+name = GS Admanager
+description = Generates Google Ad Attributes for Google Admanager and provides Ad Attribute overrides on per node basis.
+project = "gs_admanager"
+package = "custom"
+version = "7.x-1.0"
+core = "7.x"
+dependencies[] = google_admanager

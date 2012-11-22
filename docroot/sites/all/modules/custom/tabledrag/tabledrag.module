@@ -1,0 +1,160 @@
+<?php
+
+/*************************************************************
+        MODULE HOOKS
+*************************************************************/
+
+/**
+ * Implementation of hook_theme();
+ */
+function tabledrag_theme() {
+  return array(
+    'tabledrag' => array(
+      'render element'  => 'element',
+    ), 
+  );
+}
+
+/**
+ * Implementation of hook_element_info();
+ */
+function tabledrag_element_info() {
+  $types['tabledrag'] = array(
+    '#input'          => TRUE,
+    '#process'        => array('form_process_tabledrag'),
+    '#options'        => array(),
+    '#empty'          => '',
+    '#theme'          => 'tabledrag',
+    '#theme_wrappers' => array('form_element'),
+  );
+  
+  return $types; 
+}
+
+/*************************************************************
+        FORMS
+*************************************************************/
+
+/**
+ * Process the elements to populate the table.
+ *
+ * @param $element
+ *   An associative array containing the properties and children of the
+ *   tabledrag element.
+ * @return
+ *   The processed element.
+ */
+function form_process_tabledrag($element) {
+  // process rows
+  $row_num = 0;  
+  $count = sizeof($element['#td_rows']);
+  $weight_options = array();
+  
+  for ($i = 0; $i < $count; $i++) {
+    $weight_options[$i] = $i;
+  }
+
+  foreach ($element['#td_rows'] as $row_key => $row) {
+    if (isset($row['cells']) && !empty($row['cells'])) {
+      foreach ($row['cells'] as $key => $cell) {
+        if (is_array($cell)) {
+          $element[$key] = $cell;
+        }
+      }
+    }
+    
+    $element_name = $element['#name'] . '_' . $row['name'];
+    
+    $element[$element_name] = array(
+      '#type' => 'select',
+      '#title' => t('Weight for row @row_num', array('@row_num' => $row_num + 1)), 
+      '#title_display' => 'invisible',
+      '#multiple' => FALSE,
+      '#name' => $element_name, 
+      '#options' => $weight_options,
+      '#default_value' => $weight_options[$row_num],
+      '#attributes' => array(
+        'class' => array($element['#name'] . '_tabledrag_row'),
+      ),
+    );
+    
+    $row_num++;
+  }
+
+  return $element;
+}
+
+/*************************************************************
+        THEMING
+*************************************************************/
+
+/**
+ * Returns HTML for a tabledrag form element.
+ *
+ * @param $variables
+ *   An associative array containing:
+ *   - element: An associative array containing the properties of the element.
+ *     Properties used: #title, #header, #options, #attributes
+ *
+ * @ingroup themeable
+ */
+function theme_tabledrag($variables) {
+  $element = $variables['element'];
+  $rows = array();
+  $header = array();
+
+  // during AJAX callbacks the #name property doesn't appear, so we set it
+  // manually to #field_name, which is set in term_dd_change_state_callback()
+  if (!isset($element['#name']) && isset($element['#field_name'])) {
+    $element['#name'] = $element['#field_name']; 
+  }
+
+  // process rows
+  $rows_field = isset($element['#tf_rows']) ? '#tf_rows' : '#options';
+  
+  if (!empty($element['#td_rows'])) {
+    foreach ($element['#td_rows'] as $row) {
+      $rendered = array(
+        'data' => array(),  
+        'class' => array('draggable'),
+      );
+      
+      // regular cells
+      if (isset($row['cells']) && !empty($row['cells'])) {
+        foreach ($row['cells'] as $key => $cell) {
+          $rendered['data'][] = tabledrag_render_cell($element, $cell, $key);
+        }
+      }
+
+      $element_name = $element['#name'] . '_' . $row['name'];
+      
+      if (!isset($element[$element_name]['#value']) && isset($element[$element_name]['#default_value'])) {
+        $element[$element_name]['#value'] = $element[$element_name]['#default_value'];
+      }
+      
+      // weight element
+      $rendered['data'][] = $weight = tabledrag_render_cell($element, array(), $element_name);
+      
+      $rows[] = $rendered;
+    }
+  }
+  
+  drupal_add_tabledrag($element['#name'] . '_tabledrag', 'order', 'sibling', $element['#name'] . '_tabledrag_row');
+  
+  $table = theme('table', array('rows' => $rows, 'attributes' => array('id' => $element['#name'] . '_tabledrag')));
+  
+  $output = '<div id="' . $element['#name'] . '_tabledrag_table">' . $table . '</div>';
+  
+  return $output;
+}
+
+/*************************************************************
+        INTERNAL
+*************************************************************/
+
+/**
+ * Helper to render a header/row cell.
+ */
+function tabledrag_render_cell($element, $cell, $key) {
+  return is_array($cell) ? drupal_render($element[$key]) : $cell;
+}

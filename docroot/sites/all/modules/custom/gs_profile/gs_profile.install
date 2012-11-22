@@ -1,0 +1,23 @@
+<?php
+
+/**
+ * @file Schema and install hooks for the gs_profile module.
+ */
+
+/**
+ * Implements hook_schema().
+ */
+function gs_profile_schema() {
+// Adding caching table cache_entity_profile2 (missing for module entitycache). 
+  $schema = array();
+  $schema['cache_entity_profile2'] = drupal_get_schema_unprocessed('system', 'cache');
+  $schema['cache_entity_profile2']['description'] = 'Cache table for profiles2.';
+  return $schema;
+}
+
+/**
+ * Implement hook_uninstall().
+ */
+function gs_profile_uninstall() {
+  drupal_uninstall_schema('cache_entity_profile2');
+}

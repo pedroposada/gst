@@ -1,0 +1,259 @@
+<?php
+
+/**
+ * Settings variables
+ * 
+ * DEV
+ * variable_get('gs_migrate_d6_blog_term_ids', "152799,152529,196459,146,818352,339906,818541,818426,386160,760,145,818358,386161,759,818357,386159,200,389319,386163,135592,388037,182955,190356")
+ * variable_get('gs_migrate_d6_files_directory_path',"/var/www/gsprod6/docroot/files")
+ * 
+ * 
+ * PRD
+ * variable_get('gs_migrate_d6_blog_term_ids', "140,152799,152529,196459,146,818352,339906,818541,818426,386160,760,145,818358,386161,759,818357,386159,200,389319,386163,135592,388037,182955,190356")
+ * variable_get('gs_migrate_d6_files_directory_path',"/mnt/gfs/gastrnews/files")
+ * 
+ * drush vset gs_migrate_d6_blog_term_ids "140,152799,152529,196459,146,818352,339906,818541,818426,386160,760,145,818358,386161,759,818357,386159,200,389319,386163,135592,388037,182955,190356"
+ * drush vset gs_migrate_d6_files_directory_path "/mnt/gfs/gastrnews/files"
+ */
+
+
+/*
+ * You must implement hook_migrate_api(), setting the API level to 2, for
+ * your migration classes to be recognized by the Migrate module.
+ */
+function gs_migrate_migrate_api() {
+  $api = array(
+    'api' => 2,
+  );
+  return $api;
+}
+/**
+ * Translate between D6 input format id and D7 text format name.
+ */
+function gs_migrate_get_text_format($format) {
+  $output = '';
+
+  switch ($format) {
+    case 1:
+      $output = 'filtered_html';
+      break;
+    case 2:
+      $output = 'php_code';
+      break;
+    case 3:
+    case 4:
+      $output = 'full_html';
+      break;
+      // $output = 'full_html_with_markdown';
+      // break;
+    default:
+      $output = 'plain_text';
+  }
+
+  return $output;
+}
+/**
+ * Retrieve the url alias associated with the node from the migration database.
+ */
+function gs_migrate_get_url_alias($nid) {
+  $result = Database::getConnection('default', 'd6')->select('url_alias', 'ua')
+    ->fields('ua', array('dst'))
+    ->condition('ua.src', 'node/' . $nid, '=')
+    ->execute()
+    ->fetchObject();
+
+  return is_object($result) && !empty($result->dst) ? $result->dst : NULL;
+}
+/**
+ * Retrieve the new term id from the old term id by comparing the term names
+ */
+function gs_migrate_get_term_id($old_tid = null) {
+	
+	if(is_null($old_tid)){
+		return NULL;
+	}
+	
+	try{
+		
+		// get old term object
+		$query = Database::getConnection('default', 'd6')->select('term_data', 'td');
+		$query->fields('td');
+		$query->condition('td.tid',$old_tid,'=');
+		$old_term = $query->execute()->fetchObject();
+		
+		// get new term object
+		// $terms = taxonomy_get_term_by_name($old_term->name);
+		$query2 = new EntityFieldQuery;
+		$query2->entityCondition('entity_type', 'taxonomy_term');
+		$query2->propertyCondition('name', $old_term->name);
+	  	// $query2->propertyCondition('vid', $new_vid);
+	  	$new_term = $query2->execute();
+		
+	}
+	catch(Exception $e)
+	{
+		watchdog_exception('gs_migrate', $e);
+	}
+	
+	return $new_term;
+}
+/**
+ * Retrieve the set of terms associated with a node from the migration database.
+ * @nvid - node table vid value
+ * @tvid - term vid, vocabulary id
+ */
+function gs_migration_get_terms($nvid, $tvid, $table_name = NULL) {
+	$query = Database::getConnection('default', 'd6')->select('term_node', 'tn');
+	$query->join('term_data', 'td', 'tn.tid = td.tid');
+	$query->addField('td', 'name');
+	$query->condition('tn.vid', $nvid, '=');
+	$query->condition('td.vid', $tvid, '=');
+  // exclude terms that are not in map table
+  if (!is_null($table_name) && db_table_exists($table_name)) {
+    $source = db_select($table_name, 'tb');
+    $source->fields('tb', array('sourceid1'));
+    $sourceterms = $source->execute()->fetchCol();
+  	$query->condition('td.tid', $sourceterms, 'IN');
+  }
+	$query->orderBy('tn.tid', 'ASC');
+  $query->groupBy('tn.tid');
+	$result = $query->execute()->fetchCol();
+	
+	return is_array($result) && !empty($result) ? implode(',', $result) : NULL;
+}
+/**
+ * Retrieve the set of leave terms associated with a node from the migration database.
+ * @nvid - node table vid value
+ * @tvid - term vid, vocabulary id
+ */
+function gs_migration_get_leave_terms($nvid, $tvid, $table_name = NULL) {
+	$query = Database::getConnection('default', 'd6')->select('term_node', 'tn');
+	$query->join('term_data', 'td', 'tn.tid = td.tid');
+	$query->addField('td', 'tid');
+	$query->condition('tn.vid', $nvid, '=');
+	$query->condition('td.vid', $tvid, '=');
+	$query->join('term_hierarchy', 'th', 'th.tid = td.tid');
+	$query->condition('th.parent', 'td.tid', '<>');
+  // exclude terms that are not in map table
+  if (!is_null($table_name) && db_table_exists($table_name)) {
+    $source = db_select($table_name, 'tb');
+    $source->fields('tb', array('sourceid1'));
+    $sourceterms = $source->execute()->fetchCol();
+    $query->condition('td.tid', $sourceterms, 'IN');
+  }
+	$query->orderBy('tn.tid', 'ASC');
+  $query->groupBy('tn.tid');
+	$result = $query->execute()->fetchCol();
+	
+	return is_array($result) && !empty($result) ? implode(',', $result) : NULL;
+}
+/**
+ * based in taxonomy_get_parents($tid, $key = 'tid') for drupal 6
+ */
+function gs_migration_term_get_parents($tid){
+	// SELECT t.tid, t.* FROM {term_data} t INNER JOIN {term_hierarchy} h ON h.parent = t.tid WHERE h.tid = %d ORDER BY weight
+	$result = array();
+	$query = Database::getConnection('default', 'd6')->select('term_data', 'td');
+	$query->fields('td',array('tid'));
+	$query->join('term_hierarchy','th','th.parent = td.tid');
+	$query->condition('th.tid',$tid,'=');
+	$query->orderBy('weight');
+	$parents = $query->execute()->fetchCol();
+	(is_array($parents) ? $result = $parents : NULL);
+	$result[] = $tid;
+	
+	// watchdog('gs_migrate', '<pre>'.print_r($result,1).'</pre>');
+	
+	return is_array($result) && !empty($result) ? implode(',', $result) : NULL; // term number for "[none]"
+}
+/**
+ * based in taxonomy_get_parents($tid, $key = 'tid') for drupal 6
+ */
+function gs_migration_term_get_parents_blog($tid){
+	// SELECT t.tid, t.* FROM {term_data} t INNER JOIN {term_hierarchy} h ON h.parent = t.tid WHERE h.tid = %d ORDER BY weight
+	$result = array();
+	$query = Database::getConnection('default', 'd6')->select('term_data', 'td');
+	$query->fields('td',array('tid'));
+	$query->join('term_hierarchy','th','th.parent = td.tid');
+	$query->condition('th.tid',$tid,'=');
+	$query->condition('th.parent',explode(',',variable_get('gs_migrate_d6_blog_term_ids')),'IN');
+	$query->orderBy('weight');
+	$parents = $query->execute()->fetchCol();
+	(is_array($parents) ? $result = $parents : NULL);
+	$result[] = $tid;
+	
+	// watchdog('gs_migrate', '<pre>'.print_r($result,1).'</pre>');
+	
+	return is_array($result) && !empty($result) ? implode(',', $result) : NULL; // term number for "[none]"
+}
+function gs_migrate_unserialize($sObject) {
+  $__ret = preg_replace('!s:(\d+):"(.*?)";!e', "'s:'.strlen('$2').':\"$2\";'", trim($sObject) );
+  $__ret = stripslashes($__ret);
+  $__ret = base64_decode($__ret);
+  
+  return strlen($__ret) ? unserialize($__ret) : FALSE;
+}
+/**
+ * do not use unserialized; use preg_match
+ */
+function gs_migrate_get_alt_title($serialized) {
+  // example: 'a:2:{s:3:"alt";s:57:"<a href="http://rebeccablissett.com">Rebecca Blissett</a>";s:5:"title";s:102:"Coldplay flattened half a rain forest to fill its confetti cannons, all in the name of entertainment. ";}';
+  $matchesAlt = $matchesTitle = $data = array();
+  preg_match('![?<=^|;|{]s:\d+:"alt";s:\d+:"(.*?)";!e', trim($serialized), $matchesAlt);
+  $data['alt'] = isset($matchesAlt[1]) ? $matchesAlt[1] : '';
+  preg_match('![?<=^|;|{]s:\d+:"title";s:\d+:"(.*?)";!e', trim($serialized), $matchesTitle);
+  $data['title'] = isset($matchesTitle[1]) ? $matchesTitle[1] : '';
+  
+  return $data;
+}
+/**
+ * copy files
+ */
+function gs_migrate_copy_file($filepath){
+	
+	// Create the stream context
+	$context = stream_context_create(array(
+	    'http' => array(
+	        'timeout' => 3      // Timeout in seconds
+	    )
+	));
+	
+	$source = str_replace(' ', '%20', variable_get('gs_migrate_d6_files_directory_path').'/'.$filepath);
+	$dest = file_build_uri(drupal_basename($filepath));
+	if(@copy($source, $dest, $context)){
+		$path = $dest;
+	}else{
+		$path = DRUPAL_ROOT .'/'. drupal_get_path('module','gs_migrate').'/sample.jpg';
+	}
+	
+	return $path;
+}
+/**
+ * get mapped file uri
+ */
+function gs_migrate_mappedfileuri($fid){
+	
+	// get uri from mapped file
+	$q = db_select('migrate_map_file', 'm');
+  $q->condition('m.sourceid1', $fid, '=');
+	$q->join('file_managed','fm','m.destid1 = fm.fid');
+	$q->addField('fm', 'uri');
+	$uri = $q->execute()->fetchField();
+	
+	return $uri ? $uri : FALSE;
+}
+/**
+ * get mapped uid(s)
+ */
+function gs_migrate_mappeduids(array $uids = array()){
+  $result = NULL;
+  
+  if (is_array($uids) && count($uids)) {
+  	$q = db_select('migrate_map_user', 'm');
+    $q->condition('m.sourceid1', $uids, 'IN');
+  	$q->addField('m', 'destid1');
+  	$result = $q->execute()->fetchCol();
+  } 
+	
+	return !is_null($result) ? implode(',', $result) : NULL;
+}

@@ -1,0 +1,32 @@
+name = GS Helper
+description = Misclellaneous custom functionality.
+project = "gs_helper"
+package = "custom"
+version = "7.x-1.0"
+core = "7.x"
+
+dependencies[] = views
+dependencies[] = ctools
+dependencies[] = ds
+dependencies[] = quicktabs
+dependencies[] = workbench
+dependencies[] = imagecache_external
+dependencies[] = views_bulk_operations
+
+;stylesheets[theme][] = css/gs_helper.css
+
+;scripts[] = js/gs_helper.js
+
+;files[] = gs_helper.blocks.inc
+;files[] = gs_helper.config.inc
+;files[] = gs_helper.fields.inc
+;files[] = module.display_suite.inc
+;files[] = module.quicktabs.inc
+;files[] = module.panels.inc
+;files[] = helpers/arrays.inc
+;files[] = helpers/date.inc
+;files[] = helpers/drupal_form.inc
+;files[] = helpers/drupal_nodes.inc
+;files[] = helpers/drupal_taxonomy.inc
+;files[] = helpers/misc.inc
+;files[] = helpers/string.inc

@@ -1,0 +1,15 @@
+/**
+ * CSS for blacklist page.
+ */
+
+.container-inline-formitem div {
+  display: inline-block;
+}
+
+.container-inline-formitem div.description {
+  display: inline-block;
+}
+
+.container-inline-formitem .fieldset-wrapper {
+  display: block;
+}

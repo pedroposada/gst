@@ -1,0 +1,91 @@
+<?php
+
+/*************************************************************
+ DRUPAL HOOKS
+ *************************************************************/
+
+/**
+ * Implements hook_element_info_alter().
+ */
+function gs_media_browser_element_info_alter(&$type) {
+  if (isset($type['media'])) {
+    $type['media']['#process'][] = 'gs_media_browser_element_process';
+  }
+}
+
+/*************************************************************
+ MEDIA MODULE HOOKS
+ *************************************************************/
+
+/**
+ * Implements hook_media_browser_plugin_info_alter().
+ */
+function gs_media_browser_media_browser_plugin_info_alter(&$info) {
+  if (isset($info['library'])) {
+    unset($info['library']);
+  }
+}
+
+/*************************************************************
+ VIEWS MODULE HOOKS
+ *************************************************************/
+
+/**
+ * Implements hook_views_query_alter()
+ */
+function gs_media_browser_views_query_alter(&$view, &$query) {
+  if ($view->name == 'media_default' && $view->current_display == 'media_browser_1') {
+    $search = '';    
+    
+    // Check if search variable is available from the view, if not, grab it from the url.
+    if (isset($view->exposed_raw_input['filename'])) {
+      $search = $view->exposed_raw_input['filename'];
+    }
+    elseif (isset($_GET['filename']) && strlen($search)) {
+      $search = $_GET['filename'];
+    }
+    
+    // Add a new LEFT JOIN and WHERE clause to search in the medias' cutline and credit field as well.
+    $join = new views_join();
+    $join->construct('field_data_field_cutline', 'file_usage', 'id', 'entity_id');
+    
+    $query->table_queue['field_data_field_cutline'] = array(
+      'table' => 'field_data_field_cutline',
+      'num' => 1,
+      'alias' => 'field_data_field_cutline',
+      'join' => $join,
+      'relationship' => 'file_managed',
+    );
+    
+    $join = new views_join();
+    $join->construct('field_data_field_credit', 'file_usage', 'id', 'entity_id');
+    
+    $query->table_queue['field_data_field_credit'] = array(
+      'table' => 'field_data_field_credit',
+      'num' => 1,
+      'alias' => 'field_data_field_credit',
+      'join' => $join,
+      'relationship' => 'file_managed',
+    );
+    // The first parameter selects the 'AND/OR' group this WHERE will be added to.
+    // In this case, we add it to the first group (the second group is an AND group.)
+    $query->add_where(1, 'field_data_field_credit.field_credit_value', '%' . $search . '%', 'LIKE');
+    $query->add_where(1, 'field_data_field_cutline.field_cutline_value', '%' . $search . '%', 'LIKE');
+  }
+}
+
+
+/*************************************************************
+ CALLBACKS
+ *************************************************************/
+
+/**
+ * #process callback for the gs_media_browser_element_info_alter()
+ */
+function gs_media_browser_element_process(&$element, &$form_state, $form) {
+  if (isset($element['edit'])) {
+    unset($element['edit']);
+  }
+  
+  return $element;
+}

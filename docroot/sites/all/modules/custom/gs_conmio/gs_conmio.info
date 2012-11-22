@@ -1,0 +1,9 @@
+name = GS Conmio
+description = Conmio Integration for Georgia Straight
+project = "gs_conmio"
+package = "custom"
+version = "7.x-1.0"
+core = "7.x"
+dependencies[] = views
+dependencies[] = gs_helper
+files[] = views/views_plugin_row_term_rss.inc

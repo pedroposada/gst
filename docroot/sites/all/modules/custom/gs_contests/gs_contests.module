@@ -1,0 +1,447 @@
+<?php
+// The nid of the 'Refer Friends to Contest' webform
+define('GS_CONTESTS_REFER_FORM_ID', 130425);
+
+/*************************************************************
+        WEBFORM HOOKS
+*************************************************************/
+
+/**
+ * Implements hook_webform_component_presave().
+ */
+function gs_contests_webform_component_presave(&$component) {
+  if (!empty($component['extra']['items'])) {
+    // Validation in webform_autocomplete_validate_restricted() only breaks the string apart using \n as the delimiter.
+    // To avoid having to patch the module, convert the newlines to \n before it is saved.
+    // TODO: Author has committed my fix to the dev branch of the module. When there is a stable release, this can be removed.
+    $component['extra']['items'] = preg_replace('/\r\n|\r|\n/', "\n", $component['extra']['items']);
+  }
+}
+
+/**
+ * Implements hook_webform_component_info().
+ */
+function gs_contests_webform_component_info() {
+  return array(
+    'restaurant' => array(
+      'label' => t('Restaurant Autocomplete'),
+      'description' => t('Autocomplete textfield of Timeout Restaurants.'),
+      'features' => array(
+        'spam_analysis' => TRUE,
+      ),
+      'file' => 'includes/gs_contests.restaurant.inc',
+    ),
+    'skill_test' => array(
+      'label' => t('Skill Testing Question'),
+      'description' => t('Skill Testing Question and Answer.'),
+      'features' => array(
+        'spam_analysis' => TRUE,
+        'description' => FALSE,
+      ),
+      'file' => 'includes/gs_contests.skill_test.inc',
+    ),
+    'phone_number' => array(
+      'label' => t('North American Phone Number'),
+      'description' => t('North American phone number in a common format, including the local area code. These formats include 1234567890, 123-456-7890, 123.456.7890, 123 456 7890, (123) 456 7890, and all related combinations with leading +1 and trailing extension. If the phone number is valid, it is converted into a standard format (123) 456-7890 x123'),
+      'file' => 'includes/gs_contests.phone_number.inc',
+    ),
+    'consent' => array(
+      'label' => t('Consent Box'),
+      'description' => t('Allows creation of terms and conditions and newsletter consent fields.'),
+      'file' => 'includes/gs_contests.consent.inc',
+      'features' => array(
+        'default_value' => FALSE,
+        'description' => FALSE,
+      ),
+    ),
+  );
+}
+
+/**
+ * Implements hook_webform_select_options_info().
+ */
+function gs_contests_webform_select_options_info() {
+  $items = array();
+
+  $items['canada'] = array(
+    'title' => t('Canadian Provinces'),
+    'options callback' => 'gs_contests_options_canada',
+    'file' => 'includes/gs_contests.options.inc',
+  );
+  
+  $items['bc_cities'] = array(
+    'title' => t('Vancouver, Coast & Mountains Cities'),
+    'options callback' => 'gs_contests_options_bc_cities',
+    'file' => 'includes/gs_contests.options.inc',
+  );
+
+  return $items;
+}
+
+/**
+ * Implements hook_webform_submission_insert().
+ */
+function gs_contests_webform_submission_insert($node, $submission) {
+  if ($node->type == 'contest') {
+    $data = array();
+    $subscribe_consent = $subscribe_email = $subscribe_phone = $subscribe_name = $subscribe_age = '';
+    
+    foreach ($node->webform['components'] as $key => $component) {
+      switch ($component['type']) {
+        case 'email':
+          if (empty($subscribe_email)) {
+            $subscribe_email = $submission->data[$key]['value'][0];
+          }
+        case 'phone_number':
+          if (empty($subscribe_phone) && $component['form_key'] == 'phone_number_daytime') {
+            $subscribe_phone = $submission->data[$key]['value'][0];
+          }
+          $data[$component['type']][] = $submission->data[$key]['value'][0];
+          break;
+        case 'textfield':
+          if (empty($subscribe_name) && $component['form_key'] == 'full_name') {
+            $subscribe_name = $submission->data[$key]['value'][0];
+          }
+          break;
+        case 'number':
+          if (empty($subscribe_age) && $component['form_key'] == 'age') {
+            $subscribe_age = $submission->data[$key]['value'][0];
+          }
+          break;
+        case 'consent':
+          if (empty($subscribe_consent) && !$component['mandatory']) {
+            $subscribe_consent = $submission->data[$key]['value'][0];
+          }
+          break;
+      }
+    }
+    
+    if ($subscribe_consent) {
+      subscribe_contact(array(
+        'email' => $subscribe_email,
+        'name' => $subscribe_name,
+        'phone' => $subscribe_phone,
+        'age' => $subscribe_age,
+      ));
+    }
+    
+    // Create a new draw entry when a submission is added.
+    db_insert('gs_contests_entries')
+      ->fields(array(
+        'sid'  => $submission->sid,
+        'nid'  => $node->nid,
+        'data' => serialize($data),
+      ))
+      ->execute();
+  }
+  
+  if ($submission->nid == GS_CONTESTS_REFER_FORM_ID) {
+    foreach ($node->webform['components'] as $key => $component) {
+      switch ($component['form_key']) {
+        case 'contest_id':
+          $contest_id = $submission->data[$key]['value'][0];
+          break;
+        case 'referral_id':
+          $referral_id = $submission->data[$key]['value'][0];
+          break;
+        case 'contest_title':
+          $contest_title = $submission->data[$key]['value'][0];
+          break;
+      }
+    }
+    
+    if (isset($contest_id) && isset($referral_id)) {
+      $entry_check = db_select('gs_contests_entries', 'entries')
+                       ->fields('entries', array('nid', 'sid', 'data'))
+                       ->condition('sid', $referral_id, '=')
+                       ->condition('nid', $contest_id, '=')
+                       ->execute();
+        
+      // Check if submission only has 1 contest entry
+      if ($entry_check->rowCount() == 1) {
+        db_insert('gs_contests_entries')
+          ->fields(array(
+            'sid' => $referral_id,
+            'nid' => $contest_id,
+            'referer_sid' => $submission->sid,
+            'data' => $entry_check->fetchColumn(2),
+          ))
+          ->execute();
+        
+        drupal_set_message('You have received an additional contest entry for: ' . $contest_title, 'status');
+      }
+    }
+  }
+}
+
+/**
+ * Implements hook_webform_submission_delete().
+ */
+function gs_contests_webform_submission_delete($node, $submission) {
+  if ($node->type == 'contest') {
+    // For any reason a submission needs to be deleted (e.g. being disqualified).
+    // Delete all draw entries tied to the submission.
+    db_delete('gs_contests_entries')
+      ->condition('nid', $node->nid)
+      ->condition('sid', $submission->sid)
+      ->execute();
+    }
+}
+
+/*************************************************************
+        DRUPAL HOOKS
+*************************************************************/
+
+/**
+ * Implements hook_menu().
+ */
+function gs_contests_menu() {
+  $items = array();
+  $items['webform_restaurant/js/%node/%'] = array(
+    'title' => 'Webform Restaurant Autocomplete',
+    'page callback' => 'webform_restaurant_js',
+    'access callback' => 'gs_contests_access',
+    'access arguments' => array(2, 3),
+    'page arguments' => array(2, 3),
+    'type' => MENU_CALLBACK,
+    'file' => 'includes/gs_contests.restaurant.inc',
+  );
+  $items['node/' . GS_CONTESTS_REFER_FORM_ID] = array(
+    'title' => t('Redirect to Contests'),
+    'page callback' => 'gs_contests_goto',
+    'access arguments' => array('access content'),
+    'type' => MENU_CALLBACK,
+    );
+  $items['node/%webform_menu/webform-results/draw'] = array(
+    'title' => 'Draw',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('contest_draw_form', 1),
+    'access callback' => 'webform_results_access',
+    'access arguments' => array(1),
+    'file' => 'includes/gs_contests.draw.inc',
+    'weight' => 7,
+    'type' => MENU_LOCAL_TASK,
+  );
+  $items['node/%webform_menu/webform-results/blacklist'] = array(
+    'title' => 'Blacklist',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('contest_blacklist_form'),
+    'access callback' => 'webform_results_access',
+    'access arguments' => array(1),
+    'file' => 'includes/gs_contests.blacklist.inc',
+    'weight' => 8,
+    'type' => MENU_LOCAL_TASK,
+  );
+  $items['admin/workbench/contests'] = array(
+    'title' => 'Contests',
+    'page callback' => array('gs_contests_admin_content'),
+    'access callback' => 'user_access',
+    'access arguments' => array('access all webform results'),
+    'file' => 'includes/gs_contests.admin.inc',
+    'type' => MENU_LOCAL_TASK,
+    'weight' => 102,
+  );  
+  $items['admin/workbench/contests/admin'] = array(
+    'title' => 'Contests',
+    'type' => MENU_DEFAULT_LOCAL_TASK,
+  );
+  $items['admin/workbench/contests/blacklist'] = array(
+    'title' => 'Blacklist',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('contest_blacklist_form'),
+    'access callback' => 'webform_results_access',
+    'access arguments' => array(1),
+    'file' => 'includes/gs_contests.blacklist.inc',
+    'weight' => 1,
+    'type' => MENU_LOCAL_TASK,
+  );
+  
+  return $items;
+}
+
+/**
+ * Implements hook_node_insert().
+ */
+function gs_contests_node_insert($node) {
+  if (isset($node->webform['submit_notice'])) {
+    $node->webform['submit_notice'] = 0;
+    
+    // Webform does not create a webform table entry until node_update. To override 
+    // the default submit_notice value to off, we make sure the record is created.
+    webform_ensure_record($node);
+  }
+}
+
+/**
+ * Implements hook_node_delete().
+ */
+function gs_contests_node_delete($node) {
+  if ($node->type == 'contest') {
+    // When a contest is deleted, delete all draw entries tied to this contest.
+    db_delete('gs_contests_entries')
+      ->condition('nid', $node->nid)
+      ->execute();
+  }
+}
+
+/**
+ * Implements hook_theme().
+ */
+function gs_contests_theme() {
+  return array(
+    'skill_test_element' => array(
+      'render element' => 'element',
+      'file' => 'includes/gs_contests.skill_test.inc'
+    ),
+    'gs_contests_admin_content' => array(
+      'variables' => array('node' => NULL),
+      'file' => 'includes/gs_contests.admin.inc',
+    ),
+  );
+}
+
+/**
+ * Implements hook_node_load().
+ */
+function gs_contests_node_load($nodes, $types) {
+  foreach ($nodes as $key => $node) {
+    if ($node->type == 'webform' && $node->nid == GS_CONTESTS_REFER_FORM_ID) {
+      context_set('context', 'contest', context_load('contest'));
+      context_set('context', 'contests', context_load('contests'));
+    }
+  }
+}
+
+/**
+ * Implements hook_form_alter().
+ */
+function gs_contests_form_alter(&$form, &$form_state, $form_id) {
+  // Check if you're on the confirmation page (thank you page) of a contest
+  if ($form['#form_id'] == 'webform_client_form_' . GS_CONTESTS_REFER_FORM_ID && is_numeric(arg(1)) && arg(1) != $form['#node']->nid && arg(2) == 'done' && isset($_GET['sid'])) {
+    $sid = $_GET['sid'];
+    $nid = arg(1);
+    
+    foreach ($form['submitted'] as $key => &$element) {
+      switch ($key) {
+        case 'contest_id':
+          $element['#value'] = $nid;
+          break;
+        case 'referral_id':
+          $element['#value'] = $sid;
+          break;
+        case 'contest_title':
+          if ($contest = menu_get_object('node', 1, 'node/' . $nid)) {
+            $element['#value'] = $contest->title;
+          }
+          break;
+      }
+    }
+  }
+  
+  // If a new contest, redirect the user to the components form after save.
+  if (empty($form['#node']->nid) && isset($form['#node']->type) && $form_id == 'contest_node_form' && $form['#node']->type = 'contest') {
+    $form['actions']['submit']['#submit'][] = 'webform_form_submit';
+  }
+}
+
+/**
+ * Implements hook_node_validate().
+ */
+function gs_contests_node_validate($node, $form, &$form_state) {
+  if (($form_state['values']['op'] == 'Delete' || $form_state['values']['status'] == 0) && $node->nid == GS_CONTESTS_REFER_FORM_ID) {
+    form_set_error('op', t('Sorry, this webform cannot be deleted or unpublished because it is a critical part in the functionality of contests.'));
+  }
+}
+
+/*************************************************************
+        CALLBACKS
+*************************************************************/
+
+/**
+ * Access callback. Check if user has permission to view form component.
+ */
+function gs_contests_access($node, $cid) {
+  global $user;
+  if (!$cid || empty($node->webform['components'][$cid]) || !node_access('view', $node)) {
+    return FALSE;
+  }
+  if ($user->uid === 1 || webform_results_access($node)) {
+    return TRUE;
+  }
+  if (!empty($node->webform['components'][$cid]['private'])) {
+    return FALSE;
+  }
+  if (variable_get('webform_submission_access_control', 1)) {
+    foreach ($node->webform['roles'] as $rid) {
+      $allowed_roles[$rid] = isset($user->roles[$rid]) ? TRUE : FALSE;
+    }
+    if (array_search(TRUE, $allowed_roles) === FALSE) {
+      return FALSE;
+    }
+  }
+  return TRUE;
+}
+
+/**
+ * Page callback. Redirect user to contest page.
+ */
+function gs_contests_goto() {
+  drupal_goto('contests');
+}
+
+/*************************************************************
+        HELPERS
+*************************************************************/
+
+/**
+ * Remove blacklistees where their blacklist duration has passed.
+ */
+function contest_blacklist_prune() {
+  db_delete('gs_contests_blacklist')
+    ->condition('blacklist_end', time(), '<')
+    ->condition('blacklist_end', 0, '<>')
+    ->execute();
+}
+
+/**
+ * Subscribes contact to iContact.
+ *
+ * @param array $contact
+ *   An array of contact details to be submitted to iContact.
+ */
+function subscribe_contact($contact) {
+  if (is_array($contact)) {
+    $email = $contact['email'];
+    $name = $contact['name'];
+    $phone = $contact['phone'];
+    $age = $contact['age'];
+    
+    $name = explode(' ', $name, 2);
+    
+    if (!empty($email)) {
+      $ch = curl_init("https://app.icontact.com/icp/signup.php");
+      curl_setopt($ch, CURLOPT_POST, TRUE);
+      curl_setopt($ch, CURLOPT_RETURNTRANSFER, TRUE);
+      
+      $postString = "fields_email=" . $email;
+      if (!empty($name[0])) {
+        $postString .= "&fields_fname=" . $name[0];
+        
+        if (isset($name[1])) {
+          $postString .= "&fields_lname=" . $name[1];
+        }
+      }
+      if (!empty($phone)) {
+        $postString .= "&fields_phone=" . $phone;
+      }
+      if (!empty($age)) {
+        $postString .= "&fields_age=" . $age;
+      }
+      $postString .= "&listid=45123&specialid:45123=ZFFY&clientid=463136&formid=5536&reallistid=1&doubleopt=0";
+      
+      curl_setopt($ch, CURLOPT_POSTFIELDS, $postString);
+      $response = curl_exec($ch);
+      curl_close($ch);
+    }
+  }
+}

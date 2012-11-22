@@ -1,0 +1,8 @@
+name = GS Multiupload
+description = Provide multiple file upload page.
+project = "gs_multiupload"
+package = "custom"
+version = "7.x-1.0"
+core = "7.x"
+
+dependencies[] = field_collection

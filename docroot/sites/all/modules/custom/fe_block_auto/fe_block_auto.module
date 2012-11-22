@@ -1,0 +1,41 @@
+<?php
+
+/*************************************************************
+        DRUPAL HOOKS
+*************************************************************/
+
+/**
+ * Implementation of hook_form_alter();
+ */
+function fe_block_auto_form_alter(&$form, &$form_state, $form_id) {
+  if (in_array($form_id, array('block_add_block_form', 'block_admin_configure'))) {
+    // insert our submit handler right before fe_block's submit handler; we need Drupal's
+    // handler to have already executed (& populated the delta & bid)
+    if ($key = array_search('fe_block_machine_name_submit', $form['#submit'])) {
+      array_splice($form['#submit'], $key, 0, 'fe_form_auto_block_admin_submit');
+    }
+    
+    if (!empty($form['module']['#value']) && !empty($form['delta']['#value'])) {
+      // $form['settings']['machine_name']['#default_value'] = $form['module']['#value'] . '-' . $form['delta']['#value'];
+    }
+  }
+}
+
+/*************************************************************
+        FORMS
+*************************************************************/
+
+/**
+ * Submit callback for block_add_block_form and block_admin_configure
+ */
+function fe_form_auto_block_admin_submit(&$form, &$form_state) {
+  // set the machine name based on the block's module & delta
+  if (!empty($form_state['values']['module']) && !empty($form_state['values']['delta'])) {
+    $form_state['values']['machine_name'] =  $form_state['values']['module'] . '-' . $form_state['values']['delta'];
+  }
+}
+
+
+
+
+

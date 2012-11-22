@@ -1,0 +1,48 @@
+<?php
+module_load_include('inc', 'gs_weather', 'includes/gs_weather');
+
+/*************************************************************
+				DRUPAL HOOKS
+*************************************************************/
+
+
+/**
+ * Implementation of hook_block_info().
+ */
+function gs_weather_block_info() {
+  $blocks[0] = array(
+    'info' => t('Weather widget'),
+  );
+  $blocks[1] = array(
+    'info' => t('Weather page'),
+  );
+  return $blocks;
+}
+ 
+/**
+ * Implementation of hook_block_view().
+ */
+function gs_weather_block_view($delta='') {
+  $block = array();
+  switch ($delta) {
+    case 0:
+      $block['subject'] = t('<none>');
+      $block['content'] = gscontent_get_environmentCanada_weather("block");
+      break;
+
+    case 1:
+      $block['subject'] = t('<none>');
+      $block['content'] = gscontent_get_environmentCanada_weather("page");
+      break;
+  }
+  return $block;
+}
+ 
+/*************************************************************
+        FORMS
+*************************************************************/
+
+/*************************************************************
+				HELPERS
+*************************************************************/
+

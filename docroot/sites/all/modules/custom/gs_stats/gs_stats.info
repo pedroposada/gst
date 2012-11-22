@@ -1,0 +1,6 @@
+name = GS Stats
+description = Statistics gathering &amp; reporting.
+project = "gs_stats"
+package = "custom"
+version = "7.x-1.0"
+core = "7.x"

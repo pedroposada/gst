@@ -1,0 +1,6 @@
+name = GS Profile
+description = Add tabs to the user profile page.
+project = "gs_profile"
+package = "custom"
+version = "7.x-1.0"
+core = "7.x"

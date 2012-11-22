@@ -1,0 +1,8 @@
+name = Pathauto Export
+description = Allows the pathauto path to be exported along with node content.
+project = "pathauto_export"
+package = "custom"
+version = "7.x-1.0"
+core = "7.x"
+dependencies[] = pathauto
+dependencies[] = uuid

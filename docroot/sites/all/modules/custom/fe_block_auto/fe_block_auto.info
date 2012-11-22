@@ -1,0 +1,7 @@
+name = FE Block Auto
+description = Automatically generates machine name for use in FE Block.
+project = "fe_block_auto"
+package = "custom"
+version = "7.x-1.0"
+core = "7.x"
+dependencies[] = fe_block

@@ -1,0 +1,268 @@
+<?php
+
+/*************************************************************
+				DRUPAL HOOKS
+*************************************************************/
+
+/**
+ * Implementation of hook_field_widget_info();
+ */
+function term_dd_field_widget_info() {
+  return array(
+    'term_dd' => array(
+      'label' => t('Term drag & drop'), 
+      'field types' => array('taxonomy_term_reference'), 
+      'behaviors' => array(
+        'multiple values' => FIELD_BEHAVIOR_CUSTOM,
+      ),
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_field_widget_form();
+ */
+function term_dd_field_widget_form(&$form, &$form_state, $field, $instance, $langcode, $items, $delta, $element) {
+  // basic data
+    $value_key = key($field['columns']);
+  
+    $type = str_replace('options_', '', $instance['widget']['type']);
+    $multiple = $field['cardinality'] > 1 || $field['cardinality'] == FIELD_CARDINALITY_UNLIMITED;
+    $required = $element['#required'];
+    $has_value = isset($items[0][$value_key]);
+    $properties = _options_properties($type, $multiple, $required, $has_value);
+
+  // prepare the data for selected & available terms
+    $terms = array();
+    $terms_data = _options_get_options($field, $instance, $properties);
+    $selected = array();
+    $column_size = $instance['widget']['settings']['row_count'];
+    $row = 0;
+    
+    // account for newly checked (AJAX) terms which are not in $items, rebuild order, etc.
+      if (isset($form_state['term_dd_fields'])) {
+        foreach ($form_state['term_dd_fields'] as $field_name) {
+          // rebuild order of $items and add newly checked terms
+          $new_items = array();
+          foreach ($form_state['values'] as $key => $value) {
+            if (preg_match('/^' . $field_name . '_([0-9]+)$/', $key, $matches)) {
+              $new_items[$value] = $matches[1];
+            }
+          }
+          
+          ksort($new_items);
+          $new_items = array_flip($new_items);
+          
+          foreach ($form_state['values'] as $key => $value) {
+            if (preg_match('/^term_dd_' . $field_name . '_([0-9]+)$/', $key, $matches)) {
+              if (!$value) {
+                unset($new_items[$matches[1]]);
+              }              
+              elseif (!isset($new_items[$matches[1]])) {
+                $new_items[$matches[1]] = sizeof($new_items); 
+              }
+            }
+          }
+          
+          // convert our new items data to the standard structure
+          $items = array();
+          foreach ($new_items as $tid => $order) {
+            $items[] = array('tid' => $tid);
+          }
+        }
+      }
+
+    // build selected terms data, preserving their order
+      foreach ($items as $order => $data) {
+        $tid = $data['tid'];
+        
+        $selected[] = array(
+          'cells' => array(
+            $tid => $terms_data[$tid]
+          ),
+          'name' => $tid,
+        );
+      }
+    
+    // build available terms data into columns
+      $order = 0;
+      foreach ($terms_data as $tid => $term_name) {
+        $default = FALSE;
+        
+        // check whether this term is already selected
+        foreach ($items as $item) {
+          if ($item['tid'] == $tid) {
+            $default = TRUE;
+            break; 
+          } 
+        }
+        
+        // checkbox for current term
+        $terms[$row]['term_dd_' . $field['field_name'] . '_' . $tid] = array(
+          '#type'           => 'checkbox',
+          '#title'          => $term_name,
+          '#default_value'  => $default,
+          '#ajax'           => array(
+            'method'        => 'replace',
+            'effect'        => 'fade',
+            'callback'      => 'term_dd_ajax_callback',
+            'wrapper'       => $field['field_name'] . '_tabledrag_table',
+          ),
+        );
+        
+        $row++;
+        
+        if ($row == $column_size) {
+          $row = 0;
+        }
+      }
+
+    // fill in empty cells
+      $max = 0;
+      foreach ($terms as &$row) {
+        $size = sizeof($row);
+        if ($size > $max) {
+          $max = $size;
+        }
+        elseif ($size < $max) {
+          for ($i = $size; $i < $max; $i++) {
+            $row[] = '&nbsp;';
+          }
+        }
+      }
+      
+  // prepare actual tableform options
+    $element += array(
+      '#type' => 'tableform',
+      '#tf_header' => array(
+        t('Selected'),
+        t('Available options'),
+      ),
+      '#tree' => FALSE,
+      '#tf_rows' => array(
+        array( // the 'tableform' row contains two cells:
+          $field['field_name'] => array(
+            '#type' => 'tabledrag',
+            '#td_rows' => $selected,
+            '#name' => $field['field_name'],
+          ),
+          'term_dd_available' => array(
+            '#type' => 'tableform',
+            '#tf_header' => array(),
+            '#tf_rows' => $terms,
+          ),
+        ),
+      ),
+    );
+    
+  // add internal data
+    $element += array(
+      '#value_key' => $value_key,
+      '#properties' => $properties,
+    );
+    
+    $element['#tf_rows'][0][$field['field_name']] = form_process_tabledrag($element['#tf_rows'][0][$field['field_name']]);
+  
+  // mark field as a term_dd field so we can easily identify it in the submit handler
+    if (!isset($form_state['term_dd_fields'])) {
+      $form_state['term_dd_fields'] = array();
+    }
+  
+    if (!in_array($field['field_name'], $form_state['term_dd_fields'])) {
+      $form_state['term_dd_fields'][] = $field['field_name'];
+    }
+    
+  return $element;
+}
+
+/**
+ * Implementation of hook_field_widget_settings_form();
+ */
+function term_dd_field_widget_settings_form($field, $instance) {
+  $form = array();
+  
+  if ($instance['widget']['type'] == 'term_dd') {
+    $options = array();
+    for ($i = 0; $i < 100; $i++) {
+      $options[$i] = $i;
+    }
+    
+    $form['row_count'] = array(
+      '#type' => 'select',
+      '#title' => t('Row Count'),
+      '#options' => $options,
+      '#description' => t('Specifies the number of rows in which the available options will be displayed.'),
+      '#default_value' => isset($instance['widget']['settings']['row_count']) ? $instance['widget']['settings']['row_count'] : 0,
+      '#weight' => -1,
+    );
+  }
+  return $form;
+}
+
+/**
+ * Implementation of hook_form_alter();
+ */
+function term_dd_form_alter(&$form, &$form_state, $form_id) {
+  if ($form_id == 'article_node_form') { // TODO: dynamic
+    array_unshift($form['#submit'], 'term_dd_form_submit');
+  }
+}
+
+/*************************************************************
+        FORMS
+*************************************************************/
+
+/**
+ * Submit callback for forms containing term_dd widget
+ */
+function term_dd_form_submit(&$form, &$form_state) {
+  $values =& $form_state['values'];
+  
+  if (isset($form_state['term_dd_fields']) && !empty($form_state['term_dd_fields'])) {
+    foreach ($form_state['term_dd_fields'] as $field) {
+      $data = array();
+      
+      foreach ($values as $key => $value) {
+        if (preg_match('/^' . $field . '_([0-9]+$)/', $key, $matches)) {
+          // here $value contains the order position
+          $data[$value] = $matches[1];
+        }
+      }
+      
+      // sort to ensure we add terms in the correct order
+      ksort($data);
+      
+      // put the field back into the regular taxonomy data format; this will let the taxonomy
+      // module save & process it
+      $values[$field]['und'] = array();
+      
+      foreach ($data as $tid) {
+        $values[$field]['und'][] = array('tid' => $tid);
+      }
+    }
+  }
+}
+
+/**
+ * Ajax callback for checking/unchecking term
+ */
+function term_dd_ajax_callback($form, &$form_state) {
+  $field = FALSE;
+  
+  // triggered by a checkbox
+  if (preg_match('/^term_dd_(.+)_[0-9]+$/', $form_state['input']['_triggering_element_name'], $matches)) {
+    $field = $matches[1];
+    
+    return $form[$field]['und']['#tf_rows'][0][$field];
+  }
+
+  return '';
+} 
+ 
+/*************************************************************
+        THEMING
+*************************************************************/
+
+/*************************************************************
+        HELPERS
+*************************************************************/

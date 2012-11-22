@@ -1,0 +1,205 @@
+<?php
+
+/*************************************************************
+        MODULE INCLUDE FILES
+*************************************************************/
+
+module_load_include('inc', 'gs_footer', 'gs_footer.config');
+
+/*************************************************************
+                DRUPAL HOOKS
+*************************************************************/
+
+/**
+ * Implementation of hook_init(). 
+ */
+function gs_footer_init() {
+  if (arg(0) == 'backissues') {
+    drupal_add_js(drupal_get_path('module', 'gs_footer') . '/js/backissues.js');
+  }
+  if(arg(0) == 'content' && arg(1) == 'rss' && arg(2) == 'news-and-views') {
+	drupal_goto($path = 'content/rss/news');
+  }
+  elseif (arg(0) == 'content' && arg(1) == 'rss' && arg(2) == 'blog' && arg(3) == 'quickies') {
+	drupal_goto($path = 'content/rss/blog/et-cetera');
+  }
+}
+
+/**
+ * Implementation of hook_menu();
+ */
+function gs_footer_menu() {
+  $items['sitemap'] = array(
+     'title' => 'Sitemap',
+     'page callback' => 'gs_footer_sitemap',
+     'access callback' => TRUE,
+     'type' => MENU_LOCAL_TASK,
+     'weight' => 102
+  );
+  return $items;
+}
+
+/**
+ * Implementation of hook__views_pre_view();
+ */
+function gs_footer_views_pre_view(&$view, &$display_id, &$args) {
+  if ($view->name == 'careers') {
+	// Generate the home breadcrumb.
+    $breadcrumb[] = l(t('Home'), NULL);
+	// Generate the Careers breadcrumb.
+	$breadcrumb[] = '<span class="careers-breadcrumb active">Careers</span>';
+    drupal_set_breadcrumb($breadcrumb);
+  }
+}
+
+function gs_footer_date_select_element_process($element, &$form_state, $form) {
+    if (date_hidden_element($element)) {
+    return $element;
+  }
+  $date = NULL;
+  $granularity = date_format_order($element['#date_format']);
+
+  if (is_array($element['#default_value'])) {
+    $date = date_select_input_date($element, $element['#default_value']);
+  }
+  elseif (!empty($element['#default_value'])) {
+    $date = date_default_date($element);
+  }
+
+  $element['#tree'] = TRUE;
+  $element['#theme_wrappers'] = array('date_select');
+
+  $element += (array) date_parts_element($element, $date, $element['#date_format']);
+
+  // Store a hidden value for all date parts not in the current display.
+  $granularity = date_format_order($element['#date_format']);
+  $formats = array('year' => 'Y', 'month' => 'n', 'day' => 'j', 'hour' => 'H', 'minute' => 'i', 'second' => 's');
+  foreach (date_nongranularity($granularity) as $field) {
+    if ($field != 'timezone') {
+      $element[$field] = array(
+        '#type' => 'value',
+        '#value' => 0,
+        );
+    }
+  }
+  if (isset($element['#element_validate'])) {
+    array_push($element['#element_validate'], 'date_select_validate');
+  }
+  else {
+    $element['#element_validate'] = array('date_select_validate');
+  }
+
+  $context = array(
+   'form' => $form,
+  );
+  drupal_alter('date_select_process', $element, $form_state, $context);
+  
+  $element['year']['#options'] = gs_footer_get_issue_years();
+  return $element;
+}
+
+function gs_footer_get_issue_years() {
+  $date = db_query("SELECT * FROM {field_data_field_issue_date} ORDER BY `field_issue_date_value` ASC LIMIT 0, 1 ")->fetchAssoc();
+
+  $time_array_tmp = explode(' ', $date['field_issue_date_value']);
+  $time_array = explode('-', $time_array_tmp[0]);
+  $min_year = $time_array[0];
+  $year_range = array();
+  for($i = date("Y"); $i > $time_array[0] - 1; $i--) {
+    $year_range[$i] = $i;
+  }
+  
+  return $year_range;
+}
+ 
+/**
+ * Implementation of hook_form_alter(). 
+ */
+function gs_footer_form_alter(&$form, &$form_state, $form_id) {
+  if ($form['#id'] == 'views-exposed-form-back-issues-page'){
+	$form['field_issue_date_value']['value']['#process'][0] = 'gs_footer_date_select_element_process';
+    $form['submit']['#attributes'] = array('style' => array('display:none;'));
+	
+  }
+}
+
+/**
+ * Implementation of hook_theme();
+ */
+function gs_footer_theme($existing, $type, $theme, $path) {
+  $data = array(
+    // Back issue display articles
+    'gs_footer_issue_articles' => array(
+      'variables' => '',
+      'file' => 'gs_footer_display_suite.theme.inc',
+    ),
+  );  
+  
+  return $data;
+}
+
+/**
+ * hook_node_view_alter
+ * This hook call only has a purpose during development period. The urls in the #markup field must be absolute and hardcoded in the body field.
+ * When dumping the db from Dev to Stg these links are lost. By adding a token: "thesiteurl" and replacing it with this hook the problem is solved.
+ * Once live, the token and this hook call should be removed.
+ */
+function gs_footer_node_view_alter(&$build) {
+  $node = menu_get_object();
+  if (isset($node->nid)) {
+    if($node->nid == 124167){
+	  if (isset($build['body'][0]['#markup'])) {
+        global $base_url;
+        $build['body'][0]['#markup'] = str_replace('thesiteurl', $base_url, $build['body'][0]['#markup']);
+	  }
+    }
+  }
+}
+/*************************************************************
+        HELPERS
+*************************************************************/
+
+/**
+ * Implementation of hook_ds_fields_info();
+ */
+function gs_footer_ds_fields_info($entity_type) {
+  $data = array();
+    $data[$entity_type]['gs_footer_issue_articles'] = array(
+      'title' => t('GS Issue list articles'),
+      'field_type' => DS_FIELD_TYPE_THEME,
+      'properties' => array(
+        'default' => array('wrapper' => 'div', 'link' => 0),
+        'formatters' => array(
+          'gs_footer_issue_articles' => t('GS Issue list articles'), 
+        ),
+      )
+    );
+  
+  return $data;
+}
+
+/**
+ * @input: time in 2012-05-31 00:00:00 format
+ * @return: UNIX timestamp
+ */
+function gs_footer_get_unix_timestamp($time = NULL) {
+  $time_array_tmp = explode(' ', $time);
+  $time_array = explode('-', $time_array_tmp[0]);
+  return mktime(0, 0, 0, $time_array[1], $time_array[2], $time_array[0]);
+}
+
+/**
+ * Generate sitemap
+ */
+function gs_footer_sitemap() {
+  include(drupal_get_path('module', 'gs_footer') . '/includes/gs_footer_sitemap.inc');
+  drupal_set_title("Sitemap");
+  // Generate the home breadcrumb.
+  $breadcrumb[] = l(t('Home'), NULL);
+  // Generate the Careers breadcrumb.
+  $breadcrumb[] = '<span class="sitemap-breadcrumb active">Sitemap</span>';
+  drupal_set_breadcrumb($breadcrumb);
+  
+  return gs_footer_sitemap_generate();
+}
+

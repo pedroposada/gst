@@ -1,0 +1,10 @@
+name = GS Media Browser
+description = Provides a searchable library viewer when selecting media.
+project = "gs_media_browser"
+package = "custom"
+version = "7.x-1.0"
+core = "7.x"
+dependencies[] = file_entity (>1.99)
+dependencies[] = image
+dependencies[] = views
+dependencies[] = media

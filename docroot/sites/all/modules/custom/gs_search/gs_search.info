@@ -1,0 +1,12 @@
+; id$
+
+name = GS Search
+description = Custom search results, facets, filters.
+project = "gs_search"
+package = "custom"
+version = "7.x-1.0"
+core = "7.x"
+
+dependencies[] = gs_helper
+dependencies[] = apachesolr
+dependencies[] = facetapi

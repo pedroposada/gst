@@ -1,0 +1,10 @@
+name = GS Contests
+description = Supplements Webforms module to provide supporting functionality.
+project = "gs_contests"
+package = "custom"
+version = "7.x-1.0"
+core = "7.x"
+dependencies[] = webform
+dependencies[] = webform_autocomplete
+dependencies[] = select_or_other
+dependencies[] = webform_validation

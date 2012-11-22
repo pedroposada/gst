@@ -1,0 +1,1933 @@
+<?php
+
+/*************************************************************
+        MODULE INCLUDE FILES
+*************************************************************/
+
+module_load_include('inc', 'gs_helper', 'module.context');
+module_load_include('inc', 'gs_helper', 'module.display_suite');
+module_load_include('inc', 'gs_helper', 'module.quicktabs');
+module_load_include('inc', 'gs_helper', 'gs_helper.config');
+module_load_include('inc', 'gs_helper', 'gs_helper.blocks');
+module_load_include('inc', 'gs_helper', 'gs_helper.fields');
+module_load_include('inc', 'gs_helper', 'gs_helper.views');
+module_load_include('inc', 'gs_helper', 'includes/views_bulk_operations/gs_helper_view_bulk_operations');
+
+/*************************************************************
+        DRUPAL HOOKS
+*************************************************************/
+
+/**
+ * Implementation of hook_init();
+ */
+function gs_helper_init() {
+  //add css & javascript
+  drupal_add_css(GS_HELPER_PATH . '/css/gs_helper.css');
+  drupal_add_js(GS_HELPER_PATH . '/js/gs_helper.js', array('weight' => 99));
+
+  // global Drupal.settings for gs_helper
+  $absolute = url('', array('absolute' => TRUE));
+  drupal_add_js(array('gs_helper' => array(
+    'site_absolute' => $absolute,
+    'blank_gif' => $absolute . drupal_get_path('theme', 'gs') . '/img/misc/blank.gif',
+  )), 'setting');
+  
+  //load all php includes
+  $data_folder = GS_HELPER_PATH . '/helpers/';
+  $handle = opendir($data_folder);
+  while (($file = readdir($handle)) !== FALSE) {
+    if (!is_dir($data_folder . $file) && substr($file, strlen($file) - 4) == '.inc') {
+      require_once($data_folder . $file);
+    }
+  }
+  closedir($handle);
+}
+
+/**
+ * Implements hook_permission
+ */
+function gs_helper_permission() {
+  return array(
+    'edit hot topics' => array(
+      'title' => t('Access Hot Topics admin page'), 
+      'description' => t('Add, remove and edit hot topics.'),
+    ),
+    'edit lgbt external links' => array(
+      'title' => t('Access LGBT External Links admin page'), 
+      'description' => t('Add, remove and edit items.'),
+    ),
+    'edit product tabs' => array(
+      'title' => t('Access Product Tabs admin page'), 
+      'description' => t('Add, remove and edit items.'),
+    ),
+    'edit featured headlines' => array(
+      'title' => t('Access Featured Headlines admin page'), 
+      'description' => t('Add, remove and edit items.'),
+    ),
+    'edit tech games external links' => array(
+      'title' => t('Access Tech & Games external links admin page'), 
+      'description' => t('Add, remove and edit items.'),
+    ),
+    'change node status' => array(
+      'title' => t("Publish / Un-publish nodes"), 
+      'description' => t('Access menu callback to publish or un-publish nodes.'),
+    ),
+    'delete media items in bulk' => array(
+      'title' => t("Delete multiple media items"), 
+      'description' => t('Access menu callback to delete multiple media items.'),
+    ),
+  );
+}
+
+/**
+ * Implements hook_menu_alter()
+ */
+function gs_helper_menu_alter(&$items) {
+}
+
+/**
+ * Implementation of hook_menu();
+ */
+function gs_helper_menu() {
+  // custom media pop-ups
+  $items['gs/ajax/image-cropper'] = array(
+    'title' => 'Crop Image', 
+    'page callback' => 'gs_helper_image_cropper', 
+    'access arguments' => array('access content'), 
+    'type' => MENU_CALLBACK,
+  );
+  $items['gs/ajax/file-load/%file'] = array(
+    'title' => 'Load File Info', 
+    'page callback' => '_gs_helper_file_load_info', 
+    'page arguments' => array(3), 
+    'access arguments' => array('access content'), 
+    'type' => MENU_CALLBACK,
+  );
+  $items['gs/ajax/media-browser/%node'] = array(
+    'title' => 'GS Media Browser', 
+    'page callback' => '_gs_helper_media_browser', 
+    'page arguments' => array(3), 
+    'access arguments' => array('access content'), 
+    'type' => MENU_CALLBACK,
+  );
+  $items['gs/ajax/inline-media/%file'] = array(
+    'title' => 'GS Media Browser', 
+    'page callback' => '_gs_helper_inline_media', 
+    'page arguments' => array(3), 
+    'access arguments' => array('access content'), 
+    'type' => MENU_CALLBACK,
+  );
+  
+  // workbench - nodequeues
+  $items['admin/workbench/featured'] = array(
+    'title' => 'Featured Picks',
+    'page callback' => '_gs_helper_nq_list',
+    'type' => MENU_LOCAL_TASK,
+    'access arguments' => array('access workbench'),
+    'file path' => drupal_get_path('module', 'nodequeue') . '/includes',
+    'file' => 'nodequeue.admin.inc',
+    'weight'=>100,
+  );
+  $items['admin/workbench/featured/sections'] = array(
+    'title' => 'Section Picks',
+    'type' => MENU_DEFAULT_LOCAL_TASK,
+  );
+  $items['admin/workbench/featured/sections/%nodequeue/view'] = array(
+    'title' => 'View Queue',
+    'page callback' => 'nodequeue_admin_view',
+    'page arguments' => array(4),
+    'access callback' => 'nodequeue_queue_access',
+    'access arguments' => array(4),
+    'file path' => drupal_get_path('module', 'nodequeue') . '/includes',
+    'file' => 'nodequeue.admin.inc',
+    'tab_parent' => 'admin/workbench/featured/sections',
+    'tab_root' => 'admin/workbench/featured/sections',
+    'type' => MENU_CALLBACK,
+  );
+  $items['admin/workbench/featured/sections/%nodequeue/edit'] = array(
+    'title' => 'Edit Queue',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('nodequeue_edit_queue_form', 4),
+    'access callback' => 'nodequeue_queue_access',
+    'access arguments' => array(4),
+    'file path' => drupal_get_path('module', 'nodequeue') . '/includes',
+    'file' => 'nodequeue.admin.inc',
+    'tab_parent' => 'admin/workbench/featured/sections',
+    'tab_root' => 'admin/workbench/featured/sections',
+    'type' => MENU_CALLBACK,
+  );
+
+  // featured headlines 
+  $items['admin/workbench/featured/headlines'] = array(
+    'title' => 'Featured Headlines',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('gs_helper_news_rotator_form'),
+    'access arguments' => array('edit featured headlines'),
+    'file' => 'gs_helper.forms.inc',
+    'type' => MENU_LOCAL_TASK,
+    'weight' => 1
+  );
+  // lgbt external links block admin page
+  $items['admin/workbench/featured/lgbt'] = array(
+    'title' => 'LGBT External Links',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('gs_helper_lgbt_external_links_form'),
+    'access arguments' => array('edit lgbt external links'),
+    'file' => 'gs_helper.forms.inc',
+    'type' => MENU_LOCAL_TASK,
+    'weight' => 2,
+  );
+  // hot topics news block admin page
+  $items['admin/workbench/featured/hottopics'] = array(
+    'title' => 'Hot Topics',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('gs_helper_hot_topics_form'),
+    'access arguments' => array('edit hot topics'),
+    'file' => 'gs_helper.forms.inc',
+    'type' => MENU_LOCAL_TASK,
+    'weight' => 3,
+  );
+  // tech and games links block admin page
+  $items['admin/workbench/featured/techgames'] = array(
+    'title' => 'Tech & Games External Links',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('gs_helper_techgames_form'),
+    'access arguments' => array('edit tech games external links'),
+    'file' => 'gs_helper.forms.inc',
+    'type' => MENU_LOCAL_TASK,
+    'weight' => 4,
+  );
+  // store admin page
+  $items['admin/workbench/store'] = array(
+    'title' => 'Store',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('gs_helper_prod_tabs_form'),
+    'access arguments' => array('edit product tabs'),
+    'file' => 'gs_helper.forms.inc',
+    'type' => MENU_LOCAL_TASK,
+    'weight' => 102,
+  );
+
+  // expire cache for specific page
+  $items['gs/clear-cache/%_gs_helper_current_page'] = array(
+    'title' => 'Expire Cache',
+    'page callback' => '_gs_helper_clear_cache',
+    'page arguments' => array(2),
+    'access arguments' => array('clear page cache'),
+    'type' => MENU_LOCAL_TASK,
+  );
+
+  // change node status
+  $items['gs/node/status/%node'] = array(
+    'title' => 'Node Status Change',
+    'page callback' => '_gs_helper_change_node_status',
+    'page arguments' => array(3),
+    'access arguments' => array('change node status'),
+    'type' => MENU_CALLBACK,
+  );
+  
+  return $items;
+}
+
+/**
+ * Implementation of hook_theme();
+ */
+function gs_helper_theme($existing, $type, $theme, $path) {
+  $base = array(
+    'file' => 'gs_helper.theme.inc',
+  );
+  
+  $data = array(
+    // blocks
+      // logo
+      'gs_helper_logo' => array(
+        'variables' => array(
+          'path' => NULL,
+        ),
+      ),
+      // today's date
+      'gs_helper_today' => array(
+        'variables' => array(
+          'day'   => '',
+          'date'  => '',
+        ),
+      ), 
+      // section header
+      'gs_helper_section_header' => array(
+        'variables' => array(
+          'sections' => NULL,
+          'link' => NULL,
+          'class' => '',
+        ),
+      ),
+      // related stories block
+      'gs_helper_related_stories' => array(
+        'variables' => array(
+          'stories' => NULL,
+        ),
+      ),
+      // topic tray block
+      'gs_helper_blog_topics_tray' => array(
+        'variables' => array(
+          'title'  => '',
+          'topics' => NULL,
+          'active' => NULL,
+        ),
+      ),
+  // display suite fields
+    // author_date - author & date
+      'gs_helper_author_date' => array(
+        'variables' => '',
+        'file' => 'includes/display_suite/display_suite.theme.inc',
+      ),
+    // comment_post_date - Post Date
+      'gs_helper_comment_post_date' => array(
+        'variables' => '',
+        'file' => 'includes/display_suite/display_suite.theme.inc',
+      ),
+    // comment_author - Author Name
+      'gs_helper_comment_author' => array(
+        'variables' => '',
+        'file' => 'includes/display_suite/display_suite.theme.inc',
+      ),
+    // comment_rate_widget - Rate Widget
+      'gs_helper_comment_rate_widget' => array(
+        'variables' => '',
+        'file' => 'includes/display_suite/display_suite.theme.inc',
+      ),
+    // main media item in article page
+      'gs_helper_featured_media' => array(
+        'variables' => array(),
+        'file' => 'includes/display_suite/display_suite.theme.inc',
+      ),
+    // photos tab for article page
+      'gs_helper_photos_tab' => array(
+        'variables' => array(),
+        'file' => 'includes/display_suite/display_suite.theme.inc',
+      ),
+    // body - first paragraph
+      'gs_helper_body_first_paragraph' => array(
+        'variables' => array(),
+        'file' => 'includes/display_suite/display_suite.theme.inc',
+      ),
+    // node sidebar
+      'gs_helper_sidebar_node' => array(
+        'variables' => array(),
+        'file' => 'includes/display_suite/display_suite.theme.inc',
+      ),
+    // node thumbnail 
+      'gs_helper_node_thumbnail' => array(
+        'variables' => array(),
+        'file' => 'includes/display_suite/display_suite.theme.inc',
+      ),
+    // node universal thumbnail 
+      'gs_helper_node_thumbnail_universal' => array(
+        'variables' => array(),
+        'file' => 'includes/display_suite/display_suite.theme.inc',
+      ),
+    // first topic
+      'gs_helper_section_topic' => array(
+        'variables' => array(),
+        'file' => 'includes/display_suite/display_suite.theme.inc',
+      ),
+    // embeded videos
+      'gs_helper_embedded_videos' => array(
+        'variables' => array(),
+        'file' => 'includes/display_suite/display_suite.theme.inc',
+      ),
+    // downloads tab
+      'gs_helper_downloads_tab' => array(
+        'variables' => array(),
+        'file' => 'includes/display_suite/display_suite.theme.inc',
+      ),
+    // blog tags
+      'gs_helper_blog_tags' => array(
+        'variables' => array(),
+        'file' => 'includes/display_suite/display_suite.theme.inc',
+      ),
+    // blog next and prev links
+      'gs_helper_prevnext' => array(
+        'variables' => array(),
+        'file' => 'includes/display_suite/display_suite.theme.inc',
+      ),
+    // Joins attached media and gallery together and ouputs for Blogs
+      'gs_helper_media_gallery' => array(
+        'variables' => array(),
+        'file' => 'includes/display_suite/display_suite.theme.inc',
+      ),
+    // Output the legacy side for Blogs
+      'gs_helper_sidebar_blog' => array(
+        'variables' => array(),
+        'file' => 'includes/display_suite/display_suite.theme.inc',
+      ),
+  // field formatters
+    // photo tab item
+    'gs_helper_field_media_photo' => array(
+      'variables' => array(
+        'file' => NULL,
+        'attributes' => array()
+      ),
+    ),
+    // video tab item
+    'gs_helper_field_video' => array(
+      'variables' => array(
+        'video_file' => NULL,
+        'image_file' => NULL,
+      ),
+    ),
+    // image preset file
+    'gs_helper_field_image_preset' => array(
+      'variables' => array(
+        'file' => NULL,
+        'image_style' => NULL,
+        'link' => NULL,
+        'entity' => NULL,
+        'filename' => NULL,
+        'cutline' => NULL,
+        'markup' => NULL,
+        'attributes' => array()
+      ),
+    ),
+  // gs media browser
+    'gs_helper_media_browser' => array(
+      'variables' => array(),
+    ),
+    'gs_helper_inline_media' => array(
+      'variables' => array(),
+    ),
+  // front news rotator admin form
+    'gs_helper_news_rotator_form' => array(
+      'render element' => 'form',
+    ),
+  // front news rotator
+    'gs_helper_front_headlines' => array(
+      'variables' => array(),
+    ),
+  // product tabs
+    'gs_helper_prod_tabs' => array(
+      'variables' => array(),
+    ),
+  // product tabs admin form
+    'gs_helper_prod_tabs_form' => array(
+      'render element' => 'form',
+    ),
+  // lgbt external links
+    'gs_helper_lgbt_external_links' => array(
+      'variables' => array(),
+    ),
+  // lgbt external links admin form
+    'gs_helper_lgbt_external_links_form' => array(
+      'render element' => 'form',
+    ),
+    'gs_helper_bulk_operations_confirmation' => array(
+      'variables' => array('rows' => NULL, 'vbo' => NULL),
+    ),
+  );  
+  
+  // add default theme options
+  foreach ($data as &$item) {
+    $item += $base;
+  }
+  
+  $data += array(
+  // image cropper for field media collection
+    'gs_helper_image_cropper' => array(
+      'variables' => array(
+        'fid' => NULL,
+      ),
+      'path' => drupal_get_path('module', 'gs_helper') . '/templates',
+      'template' => 'gs-helper-image-cropper',
+    ),
+  );
+  
+  return $data;  
+}
+
+/**
+ * Implementation of hook_css_alter();
+ */
+function gs_helper_css_alter(&$css) {
+  // remove default CSS provided by Nice Menus
+  unset($css[drupal_get_path('module', 'nice_menus') . '/nice_menus_default.css']);
+}
+
+/**
+ * Implementation of hook_node_load();
+ */
+function gs_helper_node_load($nodes, $types) {
+  foreach ($nodes as $nid => $node) {
+    if ($node->type == 'article' && !empty($node->body['und'][0]['value'])) {
+      // extract embedded youtube and vimeo videos from body content  
+      // TODO: save thumbnail in system and don't make a new request the next time around
+      $videos = array();
+      $iframes = explode('</iframe>', $node->body['und'][0]['value']);
+      foreach ((array)$iframes as $section) {
+        // find all YouTube or Vimeo videos
+        if (preg_match('#<iframe.*src\=.+http://.*(youtube|player\.vimeo).*#', $section, $matches)) {
+          $videos[] = $matches[0] . '</iframe>';
+        }
+      }
+      $objects = explode('</object>', $node->body['und'][0]['value']);
+      foreach ((array)$objects as $section) {
+        // find all YouTube or Vimeo videos
+        if (preg_match('#<embed.*src\=.+http://.*(youtube|player\.vimeo).*#', $section, $matches)) {
+          $videos[] = $matches[0] . '</object>';
+        }
+      }
+      if (count($videos)) {
+        $nodes[$nid]->embedded_videos = $videos;
+        $thumbnail = NULL;
+        if (preg_match("/(youtu\.be\/|youtube\.com\/(watch\?(.*&)?v=|(embed|v)\/))([^\?&\"'>]+)/", $nodes[$nid]->embedded_videos[0], $matches)) {
+          if ($result = _gs_helper_curl('http://gdata.youtube.com/feeds/api/videos/' . $matches[5] . '?v=2&alt=jsonc')) {
+            $data = json_decode($result);
+            if (isset($data) && is_object($data) && !isset($data->error)) {
+              $thumbnail = $data->data->thumbnail->hqDefault;
+            }
+          }
+        } 
+        elseif (preg_match('#vimeo.+video/(.+?)\?#', $nodes[$nid]->embedded_videos[0], $matches)) {
+          if ($result = _gs_helper_curl('http://vimeo.com/api/v2/video/' . $matches[1] . '.json')) {
+            $data = json_decode($result);
+            if (isset($data) && is_object($data[0])) {
+              $thumbnail = $data[0]->thumbnail_large;
+            }
+          }
+        }
+        ( is_null($thumbnail) ? NULL : $nodes[$nid]->embedded_videos_thumbnail = $thumbnail );
+      }
+    }
+    
+    // Extract embedded sidebar content from Articles.
+    if ($node->type == 'article' && $body = field_get_items('node', $node, 'body')) {
+      if (preg_match('/{sidebar(\stitle=[\'"](.+)?[\'"])*}(.+){\/sidebar}/s', $body[0]['value'], $matches)) {
+        list($sidebar_match, $sidebar_temp, $sidebar_title, $sidebar_content) = $matches;
+        
+        // Trim whitespace and broken paragraph tags.
+        $sidebar_content = preg_replace('/<p>\s*<\/p>/', '', $sidebar_content);
+        
+        // Save into new node property so we can use it during hook_node_view().
+        $node->embedded_sidebar = array(
+          'original' => $sidebar_match,
+          'title' => $sidebar_title,
+          'content' => $sidebar_content,
+        );
+      }
+    }
+    
+  }
+}
+
+/**
+ * Implementation of hook_node_view();
+ */
+function gs_helper_node_view($node, $view_mode) {
+  // add support for videojs
+  drupal_add_css('http://vjs.zencdn.net/c/video-js.css', 'external');
+  drupal_add_js('http://vjs.zencdn.net/c/video.js', 'external');
+}
+
+/**
+ * Implements hook_page_alter().
+ */
+function gs_helper_page_alter(&$page) {
+  // act on admin pages only
+  if (path_is_admin(current_path())) {
+    // add custom css
+    $element = array(
+      '#tag' => 'link', // The #tag is the html tag - <link />
+      '#attributes' => array( // Set up an array of attributes inside the tag
+        'href' => '/' . drupal_get_path('theme', 'gs') . '/css/gs-admin.css',
+        'rel' => 'stylesheet',
+        'type' => 'text/css',
+      ),
+    );
+    drupal_add_html_head($element, 'gs_admin_css');
+    // redirect node/add/gallery to admin/workbench/content/media
+    if (drupal_match_path(current_path(), 'node/add/gallery')) {
+      drupal_goto('admin/workbench/content/media');
+    }
+  }
+  // Articles; intercept sidebar_node
+  if (isset($page['sidebar_node']) && $sidebar_node = $page['sidebar_node']) {
+    if ($object = menu_get_object()) {
+      if (in_array($object->type, array('article', 'contest'))) {
+        unset($page['sidebar_node']);
+        $key = key($page['content']['system_main']['nodes']);
+        $page['content']['system_main']['nodes'][$key]['sidebar_node'] = render($sidebar_node);
+      }
+    }
+  } 
+}
+
+/**
+ * Implements hook_node_update().
+ */
+function gs_helper_node_update($node) {
+  // Cache entries in the cache_widgets table to clear
+  $widget_sets_to_clear = array(
+    'set:gs-share-article:page:node/',
+    'set:gs-share-article-bottom:page:node/',
+  );
+  if ($widget_sets_to_clear) {
+    foreach ($widget_sets_to_clear as $set) {
+      cache_clear_all($set . $node->nid, 'cache_widgets', TRUE);
+    }
+  }
+}
+
+/**
+ * Implements hook_wysiwyg_include_directory().
+ */
+function gs_helper_wysiwyg_include_directory($type) {
+  switch ($type) {
+    case 'plugins':
+      return 'wysiwyg_plugins';
+        break;
+  }
+}
+
+/**
+ * Implementation of hook_js_alter();
+ */
+function gs_helper_js_alter(&$javascript) {
+  // dpm($javascript);
+  foreach ($javascript['settings']['data'] as &$settings) {
+    if (array_key_exists('datePopup', $settings)) {
+    /* 
+     * The wvega jquery plugin used for the scheduler timepicker does not allow you to set the interval of the dropdown.
+     * By default it increments by 1 minute of the time the page is loaded.
+     * We want to override this for the publish_on to provide a more cleaner UX.
+     */ 
+      if (isset($settings['datePopup']['edit-publish-on-timepicker-popup-1'])) {
+        $start_time = new DateObject();
+        $start_time->modify('midnight');
+        // Set the interval to 30 mins and the start time of the dropdown to midnight.
+        $settings['datePopup']['edit-publish-on-timepicker-popup-1']['settings']['interval'] = 30;
+        $settings['datePopup']['edit-publish-on-timepicker-popup-1']['settings']['startTime'] = $start_time->format(DATE_FORMAT_UNIX) * 1000;
+      }
+    }
+  }
+}
+
+/**
+ * Implementation of hook_date_popup_pre_validate_alter();
+ */
+function gs_helper_date_popup_pre_validate_alter(&$element, &$form_state, &$input) {
+  $parents = $element['#parents'];
+  if (array_pop($parents) == 'publish_on') {
+    if (!empty($input['date']) && empty($input['time'])) {
+      $publish_time = new DateObject();
+      // Make sure the time format matches the scheduler settings at admin/config/content/scheduler/default 
+      $input['time'] = $publish_time->format('H:i:s');
+    }
+  }
+}
+
+/**
+ * Implements hook_entity_delete()
+ */
+function gs_helper_entity_delete($entity, $type) {
+  // fix for VBO bulk entity delete bug - remove reference of entity in node
+  if ($type == 'field_collection_item' && $entity->field_name == "field_mediacollection") {
+    $entity->delete();
+  }
+}
+
+/**
+ * Implements function hook_workbench_create_alter(&$output)
+ */
+function gs_helper_workbench_create_alter(&$output) {
+  $output = array();
+  $output['#markup'] = '<h3>' . t('Create content') . '</h3>';
+
+  $item = menu_get_item('node/add');
+  $content = system_admin_menu_block($item);
+  
+  // remove links in Create Content page just for Editors
+  global $user;
+  foreach ($content as $key => $value) {
+    if (strstr($key,'confession') && in_array('editor', array_values($user->roles))) {
+      unset($content[$key]);
+    }
+    if (strstr($key,'i saw you') && in_array('editor', array_values($user->roles))) {
+      unset($content[$key]);
+    }
+    if (strstr($key,'page') && in_array('editor', array_values($user->roles))) {
+      unset($content[$key]);
+    }
+  }
+
+  if (!empty($content)) {
+    // Theme the arrray of content type creation links.
+    $output['#markup'] .= theme('node_add_list', array('content' => $content));
+  }
+  else {
+    $output['#markup'] .= t('You cannot create any new content. Please contact the site administrator.');
+  }
+}
+
+/**
+ * Implements hook_cron()
+ */
+function gs_helper_cron() {
+  // publish current draft of home page
+  if ($homepagenid = _gs_helper_homepage_nid()) {
+    if ($node = node_load($homepagenid)) {
+      $node = workbench_moderation_node_current_load($node);
+      if (($node->workbench_moderation['current']->state == 'draft') && ($field = field_get_items('node',$node,'field_publish_date_time'))) {
+        // if publish date-time is smaller than current date-time 
+        // then publish draft
+        if ($field[0]['value'] < REQUEST_TIME) {
+          workbench_moderation_moderate($node, 'published');
+          watchdog('gs_helper', 'workbench_moderation_moderate');
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Implements hook_user_login()
+ */
+function gs_helper_user_login(&$edit, $account) {
+  // add timestamp parameter to URL to refresh front page after login
+  if (drupal_is_front_page()) {
+    $edit['redirect'] = url('', array('query' => array('refresh' => REQUEST_TIME), 'absolute' => TRUE));
+  }
+}
+
+/**
+ * Implements hook_menu_local_tasks_alter(&$data, $router_item, $root_path)
+ */
+function gs_helper_menu_local_tasks_alter(&$data, $router_item, $root_path) {
+  if ($node = menu_get_object()) {
+    switch ($node->type) {
+      case 'gallery':
+        // alter Edit tab on Gallery nodes to redirect to admin/workbench/content/media
+        if (isset($data['tabs'], $data['tabs'][0]['output'][1])) {
+          $data['tabs'][0]['output'][1]['#link']['href'] = "admin/workbench/content/media";
+          $data['tabs'][0]['output'][1]['#link']['localized_options'] = array('query'=>array('title'=>$node->title));
+        }
+        break;
+    }
+  }
+  // default published filter for isawyous, confessions, comments
+  if (drupal_match_path(current_path(), "admin/workbench\nadmin/workbench/content/*")) {
+    if (isset($data['tabs'], $data['tabs'][1])) {
+      foreach ($data['tabs'][1]['output'] as $key => &$tab) {
+        if (in_array($tab['#link']['title'], array('Confessions','I Saw Yous', 'Comments'))) {
+          $tab['#link']['localized_options']['query'] = array('published' => 0);
+        }
+      }
+    }
+  }
+}
+
+/********************************************************************************
+ *                      FORM ALTERS
+ *******************************************************************************/
+
+/**
+ * Implementation of hook_form_alter();
+ */
+function gs_helper_form_alter(&$form, &$form_state, $form_id) {
+  if ($form_id == 'user_login_block') {
+    // change default action for front page only
+    if (drupal_is_front_page()) {
+      $form['#action'] = "/";
+    }
+    
+    // update the login button text on the user login form
+    $form['actions']['submit']['#value'] = t('Login');   
+    
+    // update the 'remember me' text; checkbox is provided by the
+    // 'remember me' module
+    if (isset($form['remember_me'])) {
+      $form['remember_me']['#title'] = t('Remember me on this computer'); 
+    }
+    
+    // remove default links and create our own
+    unset($form['links']);
+    
+    $form['actions']['forgot_pass'] = array(
+      '#markup' => l(t('Forgot your password?'), 'user/password'),
+    );
+    
+    $form['register'] = array(
+      '#markup' =>  '
+                      <div class="new-account">
+                        ' . t("Don't have an account?") . '
+                        ' . l(t('Register &raquo;'), 'user/register', array('html' => TRUE)) . '
+                      </div>      
+                    ', 
+      '#weight' => 1000,
+    );
+  }
+  elseif ($form_id == 'poll_cancel_form') {
+    // disable poll vote cancellations
+    unset($form['actions']);
+  }
+  elseif (preg_match('/.+_node_form$/i', $form_id)) {
+
+  }
+  elseif ($form_id == 'file_entity_edit' && isset($_GET['render']) && $_GET['render'] == 'media-popup') {
+    // add custom class so we can style the form shown in the modal differently from other pages
+    $form['#attributes']['class'][] = 'file-entity-edit-modal';
+  }
+  /*if ($form_id == 'article_node_form' || $form_id == 'blog_post_node_form') {
+    foreach($form['field_byline']['und']['#options'] as $key => $value) {// fix display of character "'" in byline select element
+      $form['field_byline']['und']['#options'][$key] = str_replace('&#039;', "'", $value);
+    }
+  }*/
+  // common code for article, blog, gallery
+  switch ($form_id) {
+    case 'article_node_form':
+    case 'blog_post_node_form':
+    case 'gallery_node_form':
+      if (!field_get_items('node', $form['#node'], 'field_byline')) {
+        global $user;
+        $form['field_byline']['und'][0]['uid']['#default_value'] = $user->uid;
+      }
+      break;
+  }
+  // alter node queues configure form
+  if (strpos($form_id, 'nodequeue_arrange_subqueue_form_') === 0) {
+    if (preg_match('#admin\/workbench\/featured\/sections\/(\d+)\/view#', current_path(), $matches)) {
+      $form['actions']['back'] = array(
+        '#markup' => l('Back to Editor\'s Picks','admin/workbench/featured'),
+      );
+    }
+  }
+}
+/**
+ * Implements hook_form_FORM_ID_alter(&$form, &$form_state, $form_id)
+ */
+function gs_helper_form_article_node_form_alter(&$form, &$form_state, $form_id) {
+}
+/**
+ * Implements hook_form_FORM_ID_alter(&$form, &$form_state, $form_id)
+ */
+function gs_helper_form_views_form_all_content_page_1_alter(&$form, &$form_state, $form_id) {
+  if (isset($form['qids'])) {
+    $form['qids']['#attributes']['style'] = 'height: 300px';
+  }
+}
+/**
+ * Implements hook_form_FORM_ID_alter(&$form, &$form_state, $form_id)
+ */
+function gs_helper_form_blog_post_node_form_alter(&$form, &$form_state, $form_id) {
+}
+/**
+ * Implements hook_form_FORM_ID_alter(&$form, &$form_state, $form_id)
+ */
+function gs_helper_form_gallery_node_form_alter(&$form, &$form_state, $form_id) {
+  if (is_null($form['nid']['#value']) && current_path() == 'admin/workbench/content/media') {
+    $form['actions']['submit']['#submit'][] = 'gs_helper_gallery_node_form_submit';
+  }
+}
+function gs_helper_gallery_node_form_submit($form, &$form_state) {
+  $form_state['redirect'] = array("admin/workbench/content/media", array('query'=>array('title' => $form_state['values']['title'])));
+}
+/**
+ * Implements hook_form_FORM_ID_alter(&$form, &$form_state, $form_id)
+ */
+function gs_helper_form_field_collection_item_form_alter(&$form, &$form_state, $form_id) {
+}
+/**
+ * Implements hook_form_FORM_ID_alter(&$form, &$form_state, $form_id)
+ */
+function gs_helper_form_views_form_commerce_cart_form_default_alter(&$form, &$form_state, $form_id) {
+  $form['continue_shopping'] = array(
+    '#type' => 'button',
+    '#value' => t('Continue Shopping'),
+    '#weight' => -999,
+  );
+  if (isset($_SERVER['HTTP_REFERER']) && strlen($_SERVER['HTTP_REFERER'])) {
+    $form['continue_shopping']['#attributes'] = array('ONCLICK' => "history.go(-1); return false;");
+  } else {
+    $form['continue_shopping']['#attributes'] = array('ONCLICK' => "window.location.href='" . url('store') . "'; return false;");
+  }
+}
+/**
+ * Implements hook_form_FORM_ID_alter(&$form, &$form_state, $form_id)
+ */
+function gs_helper_form_commerce_checkout_form_review_alter(&$form, &$form_state, $form_id) {
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter(&$form, &$form_state, $form_id)
+ * i_saw_you
+ */
+function gs_helper_form_i_saw_you_node_form_alter(&$form, &$form_state, $form_id) {
+  if (is_null($form['nid']['#value']) && !user_access('access workbench')) {
+    $form['actions']['submit']['#submit'][] = 'gs_helper_i_saw_you_node_form_submit';
+  }
+}
+function gs_helper_i_saw_you_node_form_submit($form, &$form_state) {
+  drupal_set_message("Thanks for posting your I Saw You with us.");
+  $form_state['redirect'] = 'isawyou';
+}
+/**
+ * Implements hook_form_FORM_ID_alter(&$form, &$form_state, $form_id)
+ * confession
+ */
+function gs_helper_form_confession_node_form_alter(&$form, &$form_state, $form_id) {
+  if (is_null($form['nid']['#value']) && !user_access('access workbench')) {
+    $form['actions']['submit']['#submit'][] = 'gs_helper_confession_node_form_submit';
+  }
+}
+function gs_helper_confession_node_form_submit($form, &$form_state) {
+  drupal_set_message("Thanks for posting your Confession with us.");
+  $form_state['redirect'] = 'confessions';
+}
+/**
+ * Implements hook_form_FORM_ID_alter(&$form, &$form_state, $form_id)
+ * home_page
+ */
+function gs_helper_form_home_page_node_form_alter(&$form, &$form_state, $form_id) {
+  drupal_add_js('
+    jQuery( function($) {
+      $(document).ready( function() {
+        $(".workbench-info-block").hide();
+        $(".edit-draft").closest("li").addClass("active");
+      });
+    });
+  ','inline');
+  $new_vid = $form['vid']['#value'] + 1;
+  $form['#action'] = "?destination=home/$new_vid/draft";
+}
+/**
+ * Implementation of hook_form_comment_form_alter();
+ */
+function gs_helper_form_comment_form_alter(&$form, &$form_state) {
+  if ($form['is_anonymous']['#value']) {
+    $form['author']['name']['#type'] = 'hidden';
+  } else {
+    global $user;
+    $form['field_yourname']['und'][0]['value']['#default_value'] = $user->name;
+    $form['field_yourname']['und'][0]['value']['#type'] = 'hidden';
+  }
+}
+
+/*************************************************************
+        CALLBACKS
+*************************************************************/
+
+/**
+ * Callback for gs/ajax/image-cropper
+ */
+function gs_helper_image_cropper() {
+  print theme('gs_helper_image_cropper');
+  exit();
+}
+/**
+ * Callback for gs/ajax/file-load/%file
+ */
+function _gs_helper_file_load_info($file) {
+  if (isset($file)) {
+    drupal_json_output($file);
+    exit();
+  }
+}
+/**
+ * Callback for gs/ajax/media-browser/%node
+ */
+function _gs_helper_media_browser($node) {
+  $output = '';
+  $output .= theme('gs_helper_media_browser', array('entity' => $node));
+  print $output;
+  exit();
+}
+/**
+ * Callback for gs/ajax/inline-media/%file
+ */
+function _gs_helper_inline_media($file) {
+  $output = '';
+  $output .= theme('gs_helper_inline_media', array('file'=>$file));
+  print $output;
+  exit();
+}
+/**
+ * Callback for admin/workbench/featured/sections
+ */ 
+function _gs_helper_nq_list() {
+  drupal_add_js('
+    jQuery( function($) {
+      $(document).ready( function() {
+        $("a.advanced-help-link").hide();
+        $("a.advanced-help-title").hide();
+      });
+    });
+  ','inline');
+  return nodequeue_view_queues();
+}
+/**
+ * Callback for gs/node/status/%node
+ */ 
+function _gs_helper_change_node_status($node) {
+  $message = '';
+  if ($node->status) {
+    node_unpublish_action($node);
+    $message = t("Content %t was un-published",array('%t'=>$node->title));
+  } else {
+    node_publish_action($node);
+    $message = t("Content %t was published",array('%t'=>$node->title));
+  }
+  node_save($node);
+  drupal_set_message($message);
+  drupal_goto();
+}
+/**
+ * Callback for gs/expire-cache/%
+ */ 
+function _gs_helper_clear_cache($path) {
+  $path = trim(str_replace('---', '/', $path),'/');
+  $parts = boost_transform_url(url($path,array('absolute'=>TRUE)));
+  if (isset($parts['filename']) && boost_in_cache_dir("{$parts['filename']}.html")) {
+    try {
+      if (is_file("{$parts['filename']}.html") && @unlink("{$parts['filename']}.html")) {
+        drupal_set_message(t('Cache has been cleared for %page.',array('%page'=>($path ? $path : 'front page')))); 
+      } else {
+        drupal_set_message(t('Cache was cleared.'),'warning');
+      }
+    } catch(Exception $e) {
+      watchdog_exception('gs_helper', $e);
+    }
+  } else {
+    drupal_set_message(t('Operation not permitted.'));
+  }
+  drupal_goto($path,array('query'=>array('panels-hash-cache-reset'=>variable_get('panels_hash_cache_reset_key'))));
+}
+function _gs_helper_current_page_to_arg($arg) {
+  if (empty($arg) || $arg == '%') {
+    if (drupal_is_front_page()) {
+      $arg = '---';
+    } else {
+      $arg = str_replace('/', '---', drupal_get_path_alias(current_path()));
+    }
+  }
+  return $arg;
+}
+/*************************************************************
+        PREPROCESSING
+*************************************************************/
+/**
+ * Implements hook_preprocess()
+ */
+
+function gs_helper_preprocess(&$variables, $hook) {
+  // stop if in admin theme
+  if (path_is_admin(current_path())) {
+    return;
+  }
+  
+  // Preprocess Most Popular Block
+  if ($hook === 'block' || $hook === 'panels_pane') {
+    // Preprocess Most Popular Block Default
+    if (isset($variables['block'])) {
+      if ($variables['block']->delta === 'most_popular') {
+        drupal_add_js(drupal_get_path('module', 'gs_helper') . '/js/gs_helper.most_popular.js', array('scope' => 'footer'));
+        $variables['block']->subject .= l(t('more'), '', array('attributes' => array('class' => 'more')));
+        
+        /**************************************************
+        // IMPORTANT NOTE
+        // Following code was removed based on editor feedback
+        // They wanted the most popular block to function like the following:
+        //
+        // - When you are viewing an article or blog, show the most popular 
+        //   articles AND blogs from ALL Sections.
+        //
+        // Because of this desired behavior, a section does not need to be appended
+        // to the title of block and the following code is no longer needed.
+        
+        $block = $variables['block'];
+        
+        if (arg(0) == 'node' && is_numeric(arg(1)) && count(arg()) == 2) {
+          $node = menu_get_object('node');
+          
+          switch ($node->type) {
+            case 'article':
+              // Get the main section terms from article
+              $node_terms = field_get_items('node', $node, 'field_section');
+              break;
+            case 'blog_post':
+              // Get the main section terms from blog
+              $node_terms = field_get_items('node', $node, 'field_blog_term');
+              break;
+          }
+          
+          if (isset($node_terms)) {
+            if ($term = taxonomy_term_load($node_terms[0]['tid'])) {
+              $block->subject .= ' <span class="section">' . $term->name . '</span>';
+              $block->subject .= l(t('more'), '', array('attributes' => array('class' => 'more')));
+            }
+          }
+        }
+        **************************************************/ 
+      }
+    }
+    
+    // Preprocess Most Popular Block inside a Pane
+    if (isset($variables['pane'])) {
+      if ($variables['pane']->subtype === 'quicktabs-most_popular') {
+        drupal_add_js(drupal_get_path('module', 'gs_helper') . '/js/gs_helper.most_popular.js', array('scope' => 'footer'));
+        if (isset($variables['title'])) {
+          $section_map = _gs_helper_section_tid_map();
+          $blog_map = _gs_helper_blog_tid_map();
+          // Check if current page is a mapped section or taxonomy term page
+          if (isset($section_map[current_path()]) && $section_map[current_path()]['tid'][0] != -1) {
+            $term = taxonomy_term_load($section_map[current_path()]['tid'][0]);
+          }
+          else {
+            $term = menu_get_object('taxonomy_term', 2);
+          }
+          // The term should only be appended for article and blog terms.
+          if (isset($term) && in_array($term->vid, array(2, 5))) {
+            // When you are viewing a Section or Subsection page, show the most 
+            // popular articles AND blogs from ONLY the Section.
+            // EXCEPTION: Books, LGBT, Style, Tech & Games will show articles
+            //            AND blogs from their respective Subsection.
+            // 
+            // The following code checks the blog mapping to account for the above
+            if (isset($blog_map[$term->tid])) {
+              $section = $term->name;
+            }
+            else {
+              $section = end(taxonomy_get_parents_all($term->tid))->name;
+            }
+            if (isset($section)) {
+              $variables['title'] .= ' <span class="section">' . $section . '</span>';
+            }
+          }
+          
+          $variables['title'] .= l(t('more'), '', array('attributes' => array('class' => 'more')));
+        }
+        
+        /**************************************************
+        // IMPORTANT NOTE
+        // Following code was removed based on editor feedback
+        // They wanted the most popular block to function like the following:
+        //
+        // - When you are viewing a Section or Subsection page, show the most 
+        //   popular articles AND blogs from ONLY the Section.
+        // - EXCEPTION: Books, LGBT, Style, Tech & Games will show articles
+        //              AND blogs from their respective Subsection.
+        
+        if (isset($variables['title'])) {
+          // Get the name of the section from the Menu
+          if ($menu_title = _gs_breadcrumb_get_menu_title_from_path(current_path())) {
+            // TODO: Find a better way to exclude Contests from being appended to Most Popular block title.
+            if ($menu_title != 'Contests') {
+              $section = $menu_title;
+            }
+          }
+          elseif (arg(0) == 'taxonomy' && arg(1) == 'term' && is_numeric(arg(2))) {
+            $term = taxonomy_term_load(arg(2));
+            $section = $term->name;
+          }
+          
+          if (isset($section)) {
+            $variables['title'] .= ' <span class="section">' . $section . '</span>';
+            $variables['title'] .= l(t('more'), '', array('attributes' => array('class' => 'more')));
+          }
+        }
+        **************************************************/
+      }
+    }
+  }
+}
+/**
+ * Implements MY_MODULE_preprocess_page()
+ */
+function gs_helper_preprocess_page(&$vars) {
+  // add nid in the Drupal js settings object
+  if (isset($vars['node'])) {
+    drupal_add_js(array('gs_helper' => array(
+      'nid' => $vars['node']->nid,
+    )), 'setting');
+    // product images
+    if ($vars['node']->type == 'product_display' && isset($vars['node']->nid)) {
+      if (isset($vars['node']->field_display_images) && field_get_items('node', $vars['node'], 'field_display_images')) {
+        drupal_add_js('
+          jQuery( function($) {
+            $(document).ready( function() {
+              // Replace big image
+              $(".product-display-images img").css("cursor","pointer");
+              $(".product-display-images img").bind("click", function() {
+                var re = new RegExp("(.*)\/product_page_small\/(.*)$");
+                var src = $(this).attr("src");
+                var m = re.exec(src);
+                var newSrc = m[1] + "/product_page_big/" + m[2];
+                $(".field-name-field-images img").attr("src", newSrc);
+              });
+            });
+          });
+        ','inline');
+      }
+    }
+  }
+  // custom tabs
+  if (user_access("access workbench")) {
+    $homepagenid = _gs_helper_homepage_nid();
+    $tabs = array();
+    // workbench tab
+    $tabs['my_workbench'] = array(
+      '#theme' => 'menu_local_task',
+      '#link' => array(
+        'title' => t("My Workbench"),
+        'path' => "admin/workbench",
+        'href' => "admin/workbench",
+        'localized_options' => array(
+          'attributes' => array(
+            'title' => t('My Workbench'),
+          ),
+        ),
+      ),
+    );
+    // logout tab for admin pages
+    $tabs['logout'] = array(
+      '#theme' => 'menu_local_task',
+      '#link' => array(
+        'title' => t("Log out"),
+        'path' => "user/logout",
+        'href' => "user/logout",
+        'localized_options' => array(
+          'attributes' => array(
+            'title' => t('Sign out from your account.'),
+          ),
+        ),
+      ),
+    );
+    // view published homepage tab
+    $tabs['view_published'] = array(
+      '#theme' => 'menu_local_task',
+      '#link' => array(
+        'title' => t("View Published"),
+        'path' => variable_get('site_frontpage'),
+        'href' => variable_get('site_frontpage'),
+        'localized_options' => array(
+          'attributes' => array(
+            'title' => t('View published.'),
+          ),
+        ),
+      '#active' => drupal_is_front_page(),
+      ),
+    );
+    // view draft tab
+    $tabs['view_draft'] = array(
+      '#theme' => 'menu_local_task',
+      '#link' => array(
+        'title' => t("View Draft"),
+        'path' => 'home/%/draft',
+        'href' => 'home/'. node_load($homepagenid)->workbench_moderation['current']->vid .'/draft',
+        'localized_options' => array(
+          'attributes' => array(
+            'title' => t('View draft'),
+          ),
+        ),
+      '#active' => drupal_match_path(current_path(), "home/*/draft"),
+      ),
+    );
+    // edit draft tab
+    $tabs['edit_draft'] = array(
+      '#theme' => 'menu_local_task',
+      '#link' => array(
+        'title' => t("Edit Draft"),
+        'path' => "node/%node/edit",
+        'href' => "node/$homepagenid/edit", // node id for home page 245082
+        'localized_options' => array(
+          'attributes' => array(
+            'title' => t('Add new revision.'),
+            'class' => array('edit-draft'),
+          ),
+        ),
+      '#active' => drupal_match_path(current_path(), "node/*/edit"),
+      ),
+    );
+    // moderate tab
+    $tabs['moderate'] = array(
+      '#theme' => 'menu_local_task',
+      '#link' => array(
+        'title' => t("Moderate"),
+        'path' => "node/%node/moderation",
+        'href' => "node/$homepagenid/moderation", // node id for home page 245082
+        'localized_options' => array(
+          'attributes' => array(
+            'title' => t('Manage revisions.'),
+          ),
+        ),
+      ),
+      '#active' => drupal_match_path(current_path(), "node/*/moderation"),
+    );
+    // clear page cache tab
+    $tabs['clear_page_cache'] = array(
+      '#theme' => 'menu_local_task',
+      '#link' => array(
+        'title' => t("Clear Page Cache"),
+        'path' => "gs/clear-cache/%",
+        'href' => "gs/clear-cache/"._gs_helper_current_page_to_arg('%'),
+        'localized_options' => array(
+          'attributes' => array(
+            'title' => t('Clear cache for this page.'),
+          ),
+        ),
+      ),
+    );
+    // add tab to clear page cache from boost
+    if (module_exists('boost') && !path_is_admin(current_path())) {
+      if (user_access('clear page cache') && ($parts = boost_transform_url())) {
+        if (boost_is_cacheable($parts)) {
+          $vars['tabs']['#primary'][] = $tabs['clear_page_cache'];
+        }
+      }
+    }
+    // admin tabs
+    if (path_is_admin(current_path())) {
+      // remove view and edit tabs from single fieldcollection item edit form
+      if (drupal_match_path(current_path(), "field-collection/field-mediacollection/*/edit\nfield-collection/field-mediacollection/*/delete")) {
+        unset($vars['tabs']['#primary']);
+        if (overlay_get_mode() == 'child') {
+          drupal_add_js("
+            (function($) {
+              $(document).ready(function() {
+                $('#overlay-tabs').hide();
+                $('div.breadcrumb').hide();
+              });
+            })(jQuery);
+          ",array('type'=>'inline','scope'=>'header'));
+        }
+      }
+      // add My Workbench tab to admin pages outside of workbench
+      if (!drupal_match_path(current_path(), "admin/workbench\nadmin/workbench/*")) {
+        // workbench tab
+        $vars['tabs']['#primary'][] = $tabs['my_workbench'];
+      }
+      // logout tab
+      $vars['tabs']['#primary'][] = $tabs['logout'];
+    }
+    // homepage
+    switch (TRUE) {
+      case drupal_match_path(current_path(), "node/*/moderation\nnode/*/edit"):
+        if (isset($vars['node']) && $vars['node']->type == 'home_page') {
+          // unset default tabs
+          unset($vars['tabs']['#primary']);
+          // set custom tabs
+          $vars['tabs']['#primary'][] = $tabs['view_published'];
+          $vars['tabs']['#primary'][] = $tabs['edit_draft'];
+          $vars['tabs']['#primary'][] = $tabs['moderate'];
+          $vars['tabs']['#primary'][] = $tabs['my_workbench'];
+          $vars['tabs']['#primary'][] = $tabs['logout'];
+        }
+        break;
+      case drupal_match_path(current_path(), "<front>"):
+        // set custom tabs
+        $vars['tabs']['#primary'][] = $tabs['view_draft'];
+        $vars['tabs']['#primary'][] = $tabs['edit_draft'];
+        $vars['tabs']['#primary'][] = $tabs['moderate'];
+        break;
+      case drupal_match_path(current_path(), "home/*/draft"):
+        // display DRAFT alert
+        drupal_set_message(t('You are viewing a draft version of the home page'), 'warning', FALSE);
+        $vars['tabs']['#primary'][] = $tabs['edit_draft'];
+        $vars['tabs']['#primary'][] = $tabs['moderate'];
+        $vars['tabs']['#primary'][] = $tabs['view_published'];
+        break;
+    }
+  }
+}
+
+/**
+ * Implements MY_MODULE_preprocess_hook()
+ */
+function gs_helper_preprocess_panels_pane(&$vars) {
+}
+
+/**
+ * Implements MY_MODULE_preprocess_hook()
+ */
+function gs_helper_preprocess_table(&$vars) {
+  // override links in nodequeue list
+  if ((current_path() == 'admin/workbench/featured') || (current_path() == 'admin/workbench/featured/sections')) {
+    if (isset($vars['header'][0])) {
+      $vars['header'][0]['data'] = t('Section');
+    }
+    if (isset($vars['header'][1])) {
+      $vars['header'][1]['data'] = t('Max Picks');
+      unset($vars['header'][1]['field']);
+    }
+    if (isset($vars['header'][2])) {
+      $vars['header'][2]['data'] = t('Current Picks');
+      unset($vars['header'][2]['field']);
+    }
+    if (isset($vars['header'][3])) {
+      $vars['header'][3]['data'] = t('Options');
+    }
+    
+    $current_section = NULL;
+    
+    // To group nodequeues together in a more presentable way, we name them with the following
+    // convention: SECTION / TERM - NAME OF NODEQUEUE. This allows nodequeues from the same
+    // section to be grouped together, and we further manipulate the output to provide an easier
+    // to understand interface.
+    foreach ($vars['rows'] as $key => &$row) {
+      if (isset($row[0]['data'])) {
+        $title = explode('/', $row[0]['data']);
+        if (count($title) > 1) {
+          if ($current_section != trim($title[0])) {
+            $current_section = trim($title[0]);
+            $row[0]['data'] = '<span class="nodequeue-label">' . trim($title[0]) . '</span> ' . trim($title[1]);
+          }
+          else {
+            $row[0]['data'] = '<span class="nodequeue-label"></span> ' . trim($title[1]);
+          }
+        }
+      }
+      
+      if (isset($row[2]['data'])) {
+        if (preg_match('/1 \((.+)\)/is', $row[2]['data'], $match)) {
+          // Rename the queue statuses to more human friendly terms.
+          switch ($match[1]) {
+            case 'Queue full':
+              $row[2]['data'] = "<span style=\"color: green;\">Full</span>";
+              break;
+            case 'Queue empty':
+              $row[2]['data'] = "<span style=\"color: red;\">None</span>";
+              break;
+            default:
+              if (preg_match('/\d+/', $match[1], $count)) {
+                $row[2]['data'] = $count[0];
+              }
+              break;
+          }
+        }
+      }
+      // Modify the links to use our custom menu callbacks.
+      if (isset($row[3]['data'])) {
+        $operation_html = filter_dom_load($row[3]['data']);
+        if ($operation_data = $operation_html->getElementsByTagName('a')) {
+          $to_be_removed = array();
+          
+          foreach ($operation_data as $key => $operation) {
+            switch ($operation->nodeValue) {
+              case 'View':
+                if (preg_match('/\d+/', $operation->getAttribute('href'), $nodequeue_id)) {
+                  $operation->setAttribute('href', '/admin/workbench/featured/sections/' . $nodequeue_id[0] . '/view');
+                }
+                $operation->nodeValue = 'Edit Picks';
+                break;
+              case 'Edit':
+                if (user_access("administer nodequeue")) {
+                  if (preg_match('/\d+/', $operation->getAttribute('href'), $nodequeue_id)) {
+                    $operation->setAttribute('href', '/admin/workbench/featured/sections/' . $nodequeue_id[0] . '/edit');
+                  }
+                  $operation->nodeValue = 'Configure';
+                }
+                else {
+                  $operation->parentNode->removeChild($operation);
+                }
+                break;
+              case 'Delete':
+                $operation->parentNode->removeChild($operation);
+                break;
+            }
+          }
+          
+          // Clean up the output and remove any extra | and spaces.
+          $row[3]['data'] = trim(filter_dom_serialize($operation_html), ' |');
+        }
+      }
+    }
+  }
+  // Filter the nodequeue list for single nodes to ones related to term.
+  // Example: When an article is posted in "News Features", only Nodequeues
+  // used in the News Sections and Subsections should be available.
+  if (($node = menu_get_object('node')) && (arg(2) == 'nodequeue')) {
+    if (isset($vars['header'][0]['data'])) {
+      $vars['header'][0]['data'] = t('Section');
+    }
+    if (isset($vars['header'][1]['data'])) {
+      $vars['header'][1]['data'] = t('Max Picks');
+    }
+    if (isset($vars['header'][2]['data'])) {
+      $vars['header'][2]['data'] = t('Current Picks');
+    }
+    if (isset($vars['header'][3]['data'])) {
+      $vars['header'][3]['data'] = t('Options');
+    }
+    
+    $nodequeue_term_map = _gs_helper_nodequeue_term_map();
+    $terms = field_get_items('node', $node, 'field_section');
+    $terms = taxonomy_get_parents_all($terms[0]['tid']);
+    
+    $terms_to_search = array();
+    foreach ($terms as $term) {
+      $terms_to_search[] = $term->tid;
+    }
+    
+    $current_section = NULL;
+    
+    foreach ($vars['rows'] as $key => &$row) {
+      if (isset($row[2]['id'])) {
+        if (preg_match('/\d+/', $row[2]['id'], $match)) {
+          if (!count(array_intersect($nodequeue_term_map[$match[0]], $terms_to_search))) {
+            unset($vars['rows'][$key]);
+          }
+          elseif (isset($row[0]['data'], $row[3]['data'])) {          
+            $title_html = filter_dom_load($row[0]['data']);
+            
+            if ($title_data = $title_html->getElementsByTagName('a')->item(0)) {
+              $section = explode('/', $title_data->nodeValue);
+              $title = explode('-', $section[1]);
+            }
+            
+            $link = $title_data->getAttribute('href');
+            
+            if (preg_match('/\d+/', $link, $nodequeue_id)) {
+              $link = 'admin/workbench/featured/sections/' . $nodequeue_id[0] . '/view';
+            }
+            
+            // Modify the links to use our custom menu callbacks.
+            if (count($section) > 1) {
+              if ($current_section != trim($section[0])) {
+                $current_section = trim($section[0]);
+                $row[0]['data'] = '<span class="nodequeue-label">' . trim($section[0]) . '</span> ' . l(trim($section[1]), $link);
+              }
+              else {
+                $row[0]['data'] = '<span class="nodequeue-label"></span> ' . l(trim($section[1]), $link);
+              }
+            }
+            
+            // Rename the operations to more human friendly terms.
+            if (count($title) == 2) {
+              $operation_html = filter_dom_load($row[3]['data']);
+              if ($operation_data = $operation_html->getElementsByTagName('a')->item(0)) {
+                switch ($operation_data->nodeValue) {
+                  case 'Add to queue':
+                    $operation_data->nodeValue = 'Add to ' . check_plain(trim($title[1]) . ' (' . trim($title[0]) . ')');
+                    break;
+                  case 'Remove from queue':
+                    $operation_data->nodeValue = 'Remove from ' . check_plain(trim($title[1]) . ' (' . trim($title[0]) . ')');
+                    break;
+                }
+                $row[3]['data'] = filter_dom_serialize($operation_html);
+              }
+            }
+            
+            if ($row[2]['data'] == 'Queue full') {
+              $row[2]['data'] = '<span style="color: green;">Full</span>';
+            }
+            elseif ($row[2]['data'] == 'Queue empty') {
+              $row[2]['data'] = '<span style="color: red;">Empty</span>';
+            }
+          }
+        }
+      }
+    }
+    
+    if (empty($vars['rows'])) {
+      $node = menu_get_object('node');
+      $vars['rows'][][] = array(
+        'data' => 'This ' . $node->type . ' does not belong in a Section that contains Featured Picks to choose from.',
+        'colspan' => 4,
+      );
+    }
+  }
+  // remove Author column from nodequeue view table
+  if (preg_match('#admin\/workbench\/featured\/sections\/(\d+)\/view#', current_path(), $matches)) {
+    unset($vars['header'][1]);
+    foreach ($vars['rows'] as $key => $value) {
+      if (isset($vars['rows'][$key]['data'])) {
+        unset($vars['rows'][$key]['data'][1]);
+        //$str = $vars['rows'][$key]['data'][4];
+        //$pat = '#<a href="\/node\/(\d+)\/edit" title="Edit this node">edit</a>#';
+        //$rep = '<a href="/node/$1/edit?destination='.current_path().'" title="Edit this node">edit</a>';
+        //$vars['rows'][$key]['data'][4] = preg_replace($pat, $rep, $str);
+      }
+    }
+  }
+  // alter view links in revision moderation page for homepage node type
+  if (drupal_match_path(current_path(), "node/*/moderation")) {
+    foreach ($vars['rows'] as $key => $value) {
+      $str = $vars['rows'][$key]['data']['revision'];
+      $pat = '#<a href="/node/(\d+)/revisions/(\d+)/view">view</a>#';
+      $rep = "<a href=\"/home/{$vars['rows'][$key]['data']['vid']}/draft\" title=\"View revision\">view</a>";
+      if (in_array('published-revision', $value['class'])) {
+        $pat = '#<a href="/(.*)">view</a>#';
+        $rep = '<a href="/" title="View published">view</a>';
+      }
+      if (in_array('current-revision', $value['class'])) {
+        $pat = '#<a href="/node/(\d+)/current-revision">view</a>#';
+      }
+      $vars['rows'][$key]['data']['revision'] = preg_replace($pat, $rep, $str);
+    }
+  }
+}
+/**
+ * Implements MY_MODULE_preprocess_hook()
+ */
+function gs_helper_preprocess_field_multiple_value_form(&$vars) {
+  // media image cropper 
+  $element = $vars['element'];
+  if (isset($element['#field_name']) && in_array($element['#field_name'],array('field_mediacollection','field_media'))) {
+    drupal_add_js(libraries_get_path('jcrop') . '/js/jquery.Jcrop.min.js');
+    drupal_add_css(libraries_get_path('jcrop') . '/css/jquery.Jcrop.css');
+    drupal_add_css(drupal_get_path('module', 'gs_helper') . '/css/gs_helper.css');
+    drupal_add_js(drupal_get_path('module', 'gs_helper') . '/js/gs_helper.mediafield.js', array('group'=>JS_LIBRARY,'weight'=>9999));
+  }
+}
+
+/**
+ * Implements MYMODULE_preprocess_ds_field_expert()
+ */
+function gs_helper_preprocess_field(&$vars) {
+  // add spans to post date field for isawyou and confession
+  if (isset($vars['element']) && in_array($vars['element']['#bundle'], array('confession','i_saw_you'))) {
+    if ($vars['element']['#field_name'] == "post_date") {
+      $pat = "#^(.+)\s-\s(\d{1,2}:\d\d\D\D)$#";
+      $rep = '<span class="italic">posted</span> $1 <span class="italic">at</span> $2';
+      $sub = $vars['element']['#items'][0]['value'];
+      $val = preg_replace($pat, $rep, $sub);
+      $vars['element']['#items'][0]['value'] = $val;
+      $vars['element'][0]['#markup'] = $val;
+      $vars['items'][0]['#markup'] = $val;
+    }
+  }
+}
+ 
+/*************************************************************
+        HELPERS
+*************************************************************/
+
+/**
+ * Find most recent home_page nid
+ * @return $nid
+ *    nid of most recent home_page node
+ */
+function _gs_helper_homepage_nid() {
+  $nids = array(FALSE);
+  
+  try {
+    $query = new EntityFieldQuery();
+    $query->entityCondition('entity_type', 'node')
+      ->entityCondition('bundle', 'home_page')
+      ->propertyOrderBy('created', 'DESC')
+      ->range(0, 1);
+    $result = $query->execute();
+    $nids = array_keys($result['node']);
+  } catch(Exception $e) {
+    watchdog_exception('gs_helper', $e);
+  }
+  
+  return $nids[0];
+}
+ 
+/**
+ * Return simple array of field values
+ * @return $data
+ *    simple array of values
+ */
+function _gs_helper_extract_select_values($field) {
+  $data = array();
+  if (isset($field['und'][0])) {
+    foreach ($field['und'] as $instance) {
+      if (isset($instance['value'])) {
+        $data[] = $instance['value'];
+      } 
+    }
+  }
+  
+  return $data;
+}
+
+/**
+ * Recursive function that builds a prioritized list of term ids with relation
+ * to the specified term and tree
+ */
+function _gs_helper_order_tids($tree, $tid, $parent, $order = array()) {
+  foreach ($tree as $term) {
+    if (isset($term->children)) {
+      if ($term->parents[0] == $parent) {
+        $order['with_kids'][] = $term->tid;
+      }
+      elseif ($term->tid != $parent) {
+        $order['uncles'][] = $term->tid;
+      }
+      
+      $order = _gs_helper_order_tids($term->children, $tid, $parent, $order);
+    }
+    elseif ($term->tid != $tid) {
+      $sibling    = $term->parents[0] == $parent;
+      $with_kids  = in_array($term->parents[0], $order['with_kids']);
+      
+      if ($sibling || $with_kids) {
+        $order['immediate'][] = $term->tid;
+      }
+      else {
+        $order['extended'][] = $term->tid;
+      }
+    }
+  }
+  
+  return $order;
+}
+
+/**
+ * Map of menu items to the appropriate term ids for data filtering.
+ */
+function _gs_helper_section_tid_map() {
+  $data = array(
+    // blogs section
+      'blogra' => array(
+        'tid' => array(
+          GS_TID_BLOGS, // blogs
+        ),
+      ),
+    
+    // news section
+      'news' => array(
+        'tid' => array(
+          GS_TID_NEWS, // news
+        ),
+      ),
+      'news/commentary' => array(
+        'tid' => array(
+          GS_TID_NEWS_COMMENTARY, // news -> commentary
+        ),
+      ),
+      'news/sports' => array(
+        'tid' => array(
+          GS_TID_NEWS_SPORTS, // news -> sports
+        ),
+      ),
+      'news/event-listings' => array(
+        'tid' => array(
+          GS_TID_NEWS_EVENT_LISTINGS, //
+        ),
+      ),
+    
+    // music section
+      'music' => array(
+        'tid' => array(
+          GS_TID_MUSIC, // music
+        ),
+      ),
+      'music/reviews' => array(
+        'tid' => array(
+          GS_TID_MUSIC_REVIEWS, // music -> concert reviews
+        ),
+      ),
+      'music/club-listings' => array(
+        'tid' => array(
+          GS_TID_MUSIC_CLUB_LISTINGS, //
+        ), 
+      ),
+      'music/music-listings' => array(
+        'tid' => array(
+          GS_TID_MUSIC_MUSIC_LISTINGS, //
+        ),
+      ),
+    
+    // arts section
+      'arts' => array(
+        'tid' => array(
+          GS_TID_ARTS, // arts
+        ),
+      ),
+      'arts/reviews' => array(
+        'tid' => array(
+          GS_TID_ARTS_REVIEWS, // arts -> arts reviews
+        ),
+      ),
+      'arts/listings' => array(
+        'tid' => array(
+          GS_TID_ARTS_LISTINGS, //
+        ),
+      ),
+    
+    // movies section    
+      'movies' => array(
+        'tid' => array(
+          GS_TID_MOVIES, // movies
+        ),
+      ),
+      'movies/reviews' => array(
+        'tid' => array(
+          GS_TID_MOVIES_REVIEWS, // movies -> movie reviews
+        ),
+      ),
+      'movies/listings-trailers' => array(
+        'tid' => array(
+          GS_TID_MOVIES_LISTINGS, //
+        ),
+      ),
+    
+    // food section
+      'food' => array(
+        'tid' => array(
+          GS_TID_FOOD, // dining
+        ),
+      ),
+      'food/golden-plates' => array(
+        'tid' => array(
+          GS_TID_FOOD_GOLDEN_PLATES, // dining -> golden plate
+        ),
+      ),
+      'food/listings' => array(
+        'tid' => array(
+          GS_TID_FOOD_LISTINGS, //
+        ),
+      ),
+    
+    // Classifieds
+      'classifieds' => array(
+        'tid' => array(
+          GS_TID_CLASSIFIEDS, // classifieds
+        ),
+      ),
+    
+    // life section
+      'life' => array(
+        'tid' => array(
+          GS_TID_LIFE, // lifestyle
+        ),
+      ),
+      'life/savage-love' => array(
+        'tid' => array(
+          GS_TID_LIFE_SAVAGE_LOVE, // lifestyle -> savage love
+        ),
+      ),
+      'life/astrology' => array(
+        'tid' => array(
+          GS_TID_LIFE_ASTROLOGY, // lifestyle -> astrology
+        ),
+      ),
+      'life/cartoons' => array(
+        'tid' => array(
+          GS_TID_LIFE_CARTOONS, // lifestyle -> cartoons
+        ),
+      ),
+      'life/books' => array(
+        'tid' => array(
+          GS_TID_LIFE_BOOKS, // books
+        ),
+      ),
+      'life/style' => array(
+        'tid' => array(
+          GS_TID_LIFE_STYLE, // style
+        ),
+      ),
+      'life/driving' => array(
+        'tid' => array(
+          GS_TID_LIFE_DRIVING, // lifestyle -> driving
+        ), 
+      ),
+      'life/health' => array(
+        'tid' => array(
+          GS_TID_LIFE_HEALTH, // lifestyle -> health
+        ), 
+      ),
+      'life/travel' => array(
+        'tid' => array(
+          GS_TID_LIFE_TRAVEL, // lifestyle -> travel
+        ),   
+      ),
+      'life/lgbt' => array(
+        'tid' => array(
+          GS_TID_LIFE_LGBT, // lifestyle -> lgbt
+        ),
+      ),
+      'life/mind-body-soul' => array(
+        'tid' => array(
+          GS_TID_LIFE_MINDBODYSOUL, // lifestyle -> mindbodysoul
+        ),
+      ),
+      'life/photo-galleries' => array(
+        'tid' => array(
+          GS_TID_LIFE_PHOTO_GALLERIES, //
+        ),
+      ),
+      'life/tech-games' => array(
+        'tid' => array(
+          GS_TID_LIFE_TECH_GAMES, // technology
+        ),
+      ),
+  );
+  
+  return $data;
+}
+
+/**
+ * Map of blog term ids that should be included in sections.
+ * For use with most popular block.
+ */
+function _gs_helper_blog_tid_map() {
+  return array(
+    GS_TID_ARTS            => GS_TID_BLOGS_ARTS,
+    GS_TID_LIFE_BOOKS      => GS_TID_BLOGS_BOOKS,
+    GS_TID_FOOD            => GS_TID_BLOGS_FOOD,
+    GS_TID_LIFE_LGBT       => GS_TID_BLOGS_LGBT,
+    GS_TID_LIFE            => GS_TID_BLOGS_LIFE,
+    GS_TID_MOVIES          => GS_TID_BLOGS_MOVIES,
+    GS_TID_MUSIC           => GS_TID_BLOGS_MUSIC,
+    GS_TID_NEWS            => GS_TID_BLOGS_NEWS,
+    GS_TID_LIFE_STYLE      => GS_TID_BLOGS_STYLE,
+    GS_TID_LIFE_TECH_GAMES => GS_TID_BLOGS_TECH,
+  );
+}
+
+function _gs_helper_nodequeue_term_map() {
+  return array(
+    10 => array(GS_TID_ARTS, GS_TID_BLOGS_ARTS), // Arts - Featured Stories
+    14 => array(GS_TID_ARTS, GS_TID_BLOGS_ARTS), // Arts - Top Story
+    28 => array(GS_TID_ARTS_REVIEWS), // Arts Reviews - Top Story
+    34 => array(GS_TID_LIFE_BOOKS, GS_TID_BLOGS_BOOKS), // Books - Top Story
+    33 => array(GS_TID_LIFE_CARTOONS), // Cartoons - Top Story
+    45 => array(1), // Contest - Featured Contests
+    36 => array(GS_TID_LIFE_DRIVING), // Driving - Top Story
+    12 => array(GS_TID_FOOD, GS_TID_BLOGS_FOOD), // Food - Featured Stories
+    15 => array(GS_TID_FOOD, GS_TID_BLOGS_FOOD), // Food - Top Story
+    30 => array(GS_TID_FOOD_GOLDEN_PLATES), // Golden Plates - Top Story
+    37 => array(GS_TID_LIFE_HEALTH), // Health - Top Story
+    39 => array(GS_TID_LIFE_LGBT, GS_TID_BLOGS_LGBT), // LGBT - Top Story
+    13 => array(GS_TID_LIFE, GS_TID_BLOGS_LIFE), // Life - Featured Stories
+    16 => array(GS_TID_LIFE, GS_TID_BLOGS_LIFE), // Life - Top Story
+    29 => array(GS_TID_MOVIES_REVIEWS), // Movie Reviews - Top Story
+    11 => array(GS_TID_MOVIES, GS_TID_BLOGS_MOVIES), // Movies - Featured Stories
+    17 => array(GS_TID_MOVIES, GS_TID_BLOGS_MOVIES), // Movies - Top Story
+    9  => array(GS_TID_MUSIC, GS_TID_BLOGS_MUSIC), // Music - Featured Stories
+    18 => array(GS_TID_MUSIC, GS_TID_BLOGS_MUSIC), // Music - Top Stoy
+    27 => array(GS_TID_MUSIC_REVIEWS), // Music Reviews - Top Story
+    8  => array(GS_TID_NEWS, GS_TID_BLOGS_NEWS), // News - Featured Stories
+    19 => array(GS_TID_NEWS, GS_TID_BLOGS_NEWS), // News - Top Story
+    26 => array(GS_TID_NEWS_COMMENTARY), // News Commentary - Top Story
+    44 => array(1), // Photo Galleries - Featured Gallery
+    31 => array(GS_TID_LIFE_SAVAGE_LOVE), // Savage Love - Top Story
+    25 => array(GS_TID_NEWS_SPORTS), // Sports - Top Story
+    43 => array(1), // Store - Featured Products
+    35 => array(GS_TID_LIFE_STYLE, GS_TID_BLOGS_STYLE), // Style - Top Story
+    42 => array(GS_TID_LIFE_TECH_GAMES, GS_TID_BLOGS_TECH), // Tech & Games - Top Story
+    38 => array(GS_TID_LIFE_TRAVEL), // Travel - Top Story
+  );
+}
+
+/**
+ * Checks for the node page, and loads the node
+ */
+function _gs_helper_node_from_url() {
+  return menu_get_object();
+}
+
+/**
+ * Runs a CURL request on specified URL and returns result
+ */
+function _gs_helper_curl($url) {
+  $ch = curl_init();  
+  
+  curl_setopt($ch, CURLOPT_URL, $url);  
+  curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);  
+  $data = curl_exec($ch);
+    
+  curl_close($ch);
+  
+  return $data;
+}

@@ -1,0 +1,656 @@
+<?php
+
+/*************************************************************
+        WIDGETS HOOKS
+*************************************************************/
+
+/**
+ * Implements hook_widgets_element_info().
+ */
+
+function gs_socialmedia_widgets_element_info() {
+  $elements = array(
+    'gs-comment-button' => array(
+      'label' => t('gs-comment-button'),
+      'template' => '<div class="util"><a href="/[node:url:path]#comments"[?link-rel= rel="{nofollow}"?]><img src="[?icon-path=/sites/all/themes/gs/img/icons/icon-comment-18x18.png?]" alt="Comments" /></a></div>',
+      'form callback' => 'widgets_template_auto_form',
+    ),
+    'gs-print-button' => array(
+      'label' => t('gs-print-button'),
+      'template' => '<div class="social"><a href="/print/[node:url:path]"[?link-rel= rel="{nofollow}"?]><img src="[?icon-path=/sites/all/themes/gs/img/icons/icon-print-18x18.png?]" alt="Printer Friendly Version" /></a></div>',
+      'form callback' => 'widgets_template_auto_form',
+    ),
+    'gs-share-email-button' => array(
+      'label' => t('gs-share-email-button'),
+      'template' => '<div class="social"><a href="/forward?path=[node:url:path]"[?link-rel= rel="{nofollow}"?]><img src="[?icon-path=/sites/all/themes/gs/img/icons/icon-email-18x18.png?]" alt="Share via Email" /></a></div>',
+      'form callback' => 'widgets_template_auto_form',
+    ),
+    'gs-share-forward-button' => array(
+      'label' => t('gs-share-forward-button'),
+      'template' => '<div class="social"><a href="#overlay='.PRINTMAIL_PATH.'/[node:nid]"[?link-rel= rel="{nofollow}"?]><img src="[?icon-path=/sites/all/themes/gs/img/icons/icon-email-18x18.png?]" alt="Share via Email" /></a></div>',
+      'form callback' => 'widgets_template_auto_form',
+    ),
+    'gs-share-facebook-button' => array(
+      'label' => t('gs-share-facebook-button'),
+      'template' => '<div class="social"><a onclick="window.open(this.href,\'sharefacebook\',\'toolbar=0,status=0,width=480,height=420\'); return false;" href="http://www.facebook.com/sharer.php?u=[node:url]&t=[node:title:social]" title="Share on Facebook"[?link-target= target="{_blank}"?][?link-rel= rel="{nofollow}"?]><img src="[?icon-path=/sites/all/themes/gs/img/icons/icon-facebook-18x18.png?]" alt="Share on Facebook" ></a></div>',
+      'form callback' => 'widgets_template_auto_form',
+    ),
+    'gs-share-plusone-button' => array(
+      'label' => t('gs-share-plusone-button'),
+      'template' => '<div class="social"><a onclick="window.open(this.href,\'sharegoogle\',\'toolbar=0,status=0,width=480,height=420\'); return false;" href="https://plusone.google.com/_/+1/confirm?hl=en&url=[node:url]" title="Google+"[?link-target= target="{_blank}"?][?link-rel= rel="{nofollow}"?]><img src="[?icon-path=/sites/all/themes/gs/img/icons/icon-plusone-18x18.png?]" alt="Google+" ></a></div>',
+      'form callback' => 'widgets_template_auto_form',
+    ),
+    'gs-share-twitter-button' => array(
+      'label' => t('gs-share-twitter-button'),
+      'template' => '<div class="social"><a onclick="window.open(this.href,\'sharetwitter\',\'toolbar=0,status=0,width=480,height=360\'); return false;" href="http://twitter.com/share?url=[node:url]&text=[node:title:social]" title="Tweet"[?link-target= target="{_blank}"?][?link-rel= rel="{nofollow}"?]><img src="[?icon-path=/sites/all/themes/gs/img/icons/icon-twitter-18x18.png?]" alt="Tweet" ></a></div>',
+      'form callback' => 'widgets_template_auto_form',
+    ),
+    'default-facebook-like-button' => array(
+      'label' => t('default-facebook-like-button'),
+      'template' => '<div class="social fb"><div class="fb-like" data-href="[node:url]" data-send="[?send_button=false?]" data-layout="[?layout=button_count?]"[?width= data-width="{90}"?][?show_faces= data-show-faces="false"?][?color_scheme= data-colorscheme="{<none>}"?] ></div></div><div id="fb-root"></div>',
+      'form callback' => 'widgets_template_auto_form',
+    ),
+    'default-plusone-button' => array(
+      'label' => t('default-plusone-button'),
+      'template' => '<div class="social plusone"><g:plusone size="[?size=medium?]"></g:plusone></div>',
+      'form callback' => 'widgets_template_auto_form',
+    ),
+    'default-tweet-button' => array(
+      'label' => t('default-tweet-button'),
+      'template' => '<div class="social twitter"><a href="https://twitter.com/share" class="twitter-share-button" data-count="horizontal" data-text="[node:title:social]"></a></div>',
+      'form callback' => 'widgets_template_auto_form',
+    ),
+    'gs-comment-button-count' => array(
+      'label' => t('gs-comment-button-custom'),
+      'template' => '<div class="util"><a href="/[node:url:path]#comments"[?link-rel= rel="{nofollow}"?]><img src="[?icon-path=/sites/all/themes/gs/img/icons/icon-comment-18x18.png?]" alt="Comments" class="gs-widget-comments"  /><span><span>[node:comment-count]</span></span></a></div>',
+      'form callback' => 'widgets_template_auto_form',
+    ),
+    'gs-page-facebook-button' => array(
+      'label' => t('gs-page-facebook-button'),
+      'template' => '<div class="social"><a onclick="window.open(this.href,\'sharefacebook\',\'toolbar=0,status=0,width=480,height=420\'); return false;" href="http://www.facebook.com/sharer.php?u=[|[node:url]||[current-page:url]|]&t=[|[node:title]||[current-page:title-plain]|]" title="Share on Facebook"[?link-target= target="{_blank}"?][?link-rel= rel="{nofollow}"?]><img src="[?icon-path=/sites/all/themes/gs/img/icons/icon-facebook-18x18.png?]" alt="Share on Facebook" ></a></div>',
+      'form callback' => 'widgets_template_auto_form',
+    ),
+    'gs-page-twitter-button' => array(
+      'label' => t('gs-share-twitter-button'),
+      'template' => '<div class="social"><a onclick="window.open(this.href,\'sharetwitter\',\'toolbar=0,status=0,width=480,height=360\'); return false;" href="http://twitter.com/share?url=[|[node:url]||[current-page:url]|]&text=[|[node:title]||[current-page:title-plain]|]" title="Tweet"[?link-target= target="{_blank}"?][?link-rel= rel="{nofollow}"?]><img src="[?icon-path=/sites/all/themes/gs/img/icons/icon-twitter-18x18.png?]" alt="Tweet" ></a></div>',
+      'form callback' => 'widgets_template_auto_form',
+    ),
+  );
+  
+  return $elements;
+}
+
+/**
+ * Implements hook_widgets_default_sets().
+ */
+function gs_socialmedia_widgets_default_sets() {
+  $sets['gs-share-article'] = array(
+    'data' => array(
+      'style' => 'horizontal',
+      'cache' => array('scope' => 'page'),
+    ),
+    'elements' => array(
+      array(
+        'name' => 'gs-share-facebook-button',
+        'weight' => 1,
+      ),
+      array(
+        'name' => 'gs-share-twitter-button',
+        'data' => array(),
+        'weight' => 2,
+      ),
+      array(
+        'name' => 'gs-share-plusone-button',
+        'data' => array(),
+        'weight' => 3,
+      ),
+      array(
+        'name' => 'gs-share-email-button',
+        'data' => array(),
+        'weight' => 4,
+      ),
+      array(
+        'name' => 'gs-print-button',
+        'data' => array(),
+        'weight' => 5,
+      ),
+      array(
+        'name' => 'gs-comment-button',
+        'data' => array(),
+        'weight' => 6,
+      ),
+    ),
+  );
+  
+  $sets['gs-share-article-bottom'] = array(
+    'data' => array(
+      'style' => 'horizontal',
+      'cache' => array('scope' => 'page'),
+    ),
+    'elements' => array(
+      array(
+        'name' => 'default-tweet-button',
+        'data' => array(),
+        'weight' => 1,
+      ),
+      array(
+        'name' => 'default-plusone-button',
+        'data' => array(),
+        'weight' => 2,
+      ),
+      array(
+        'name' => 'default-facebook-like-button',
+        'weight' => 3,
+      ),
+      array(
+        'name' => 'gs-share-email-button',
+        'data' => array(),
+        'weight' => 4,
+      ),
+      array(
+        'name' => 'gs-print-button',
+        'data' => array(),
+        'weight' => 5,
+      ),
+      array(
+        'name' => 'gs-comment-button-count',
+        'data' => array(),
+        'weight' => 6,
+      ),
+    ),
+  );
+  
+  $sets['gs-share-gossip'] = array(
+    'data' => array(
+      'style' => 'horizontal',
+      'cache' => array('scope' => 'page'),
+    ),
+    'elements' => array(
+      array(
+        'name' => 'gs-share-facebook-button',
+        'weight' => 1,
+      ),
+      array(
+        'name' => 'gs-share-twitter-button',
+        'data' => array(),
+        'weight' => 2,
+      ),
+      array(
+        'name' => 'gs-share-plusone-button',
+        'data' => array(),
+        'weight' => 3,
+      ),
+      array(
+        'name' => 'gs-comment-button-count',
+        'data' => array(),
+        'weight' => 4,
+      ),
+    ),
+  );
+  
+  $sets['gs-share-classified'] = array(
+    'data' => array(
+      'style' => 'horizontal',
+      'cache' => array('scope' => 'page'),
+    ),
+    'elements' => array(
+      array(
+        'name' => 'gs-share-facebook-button',
+        'weight' => 1,
+      ),
+      array(
+        'name' => 'gs-share-twitter-button',
+        'data' => array(),
+        'weight' => 2,
+      ),
+      array(
+        'name' => 'gs-share-plusone-button',
+        'data' => array(),
+        'weight' => 3,
+      ),
+      array(
+        'name' => 'gs-share-email-button',
+        'data' => array(),
+        'weight' => 4,
+      ),
+      array(
+        'name' => 'gs-print-button',
+        'data' => array(),
+        'weight' => 5,
+      ),
+    ),
+  );
+  
+  return $sets;
+}
+
+/*************************************************************
+        DRUPAL HOOKS
+*************************************************************/
+
+/**
+ * Implementation of hook_init();
+ */
+function gs_socialmedia_init() {
+  drupal_add_js(drupal_get_path('module', 'gs_socialmedia') . '/js/gs_socialmedia.js', array('scope' => 'footer'));
+}
+
+/**
+ * Implements hook_tokens().
+ */
+function gs_socialmedia_tokens($type, $tokens, array $data = array(), array $options = array()) {
+  // dpm($tokens);
+  $replacements = array();
+  
+  if ($type == 'node') {
+    if (isset($data['node']) && isset($tokens['title:social'])) {
+      if ($socialmedia_title = field_get_items('node', $data['node'], 'field_socialmedia_title')) {
+        $title = field_view_value('node', $data['node'], 'field_socialmedia_title', $socialmedia_title[0]);
+        $title = $title['#markup'];
+      }
+      else {
+        $title = $data['node']->title;
+      }
+      $replacements[$tokens['title:social']] = $title;
+    }
+  }
+  
+  if ($type == 'current-page') {
+    if (isset($tokens['title-plain'])) {
+      $replacements[$tokens['title-plain']] = strip_tags(drupal_get_title());
+    }
+  }
+  
+  return $replacements;
+}
+
+/**
+ * Implements hook_page_alter().
+ */
+function gs_socialmedia_page_alter(&$page) {
+  if (path_is_admin(current_path())) {
+   return;
+  }
+  
+  if (arg(0) == 'node' && is_numeric(arg(1)) && count(arg()) == 2) {
+    $node = $page['content']['system_main']['nodes'][arg(1)]['#node'];
+    
+    // Check if there's an override for the title.
+    if ($socialmedia_title = field_get_items('node', $node, 'field_socialmedia_title')) {
+      $title = $socialmedia_title[0]['value'];
+    } else {
+      $title = $node->title;
+    }
+    
+    // Check if there's a override for the teaser.
+    if ($socialmedia_teaser = field_get_items('node', $node, 'field_socialmedia_teaser')) {
+      $teaser = $socialmedia_teaser[0]['value'];
+    }
+    // Check if there is a summary written.
+    elseif ($node_body = field_get_items('node', $node, 'body')) {
+      $teaser = $node_body[0]['summary'];
+    }
+    
+    // If no teaser is available, use the teaser view of the node.
+    // TODO: Need to find a better solution when there is no teaser to use.
+    if (empty($teaser)) {
+      $node_teaser = node_view($node, 'teaser');
+      if (isset($node_teaser['body'])) {
+        $teaser = strip_tags($node_teaser['body'][0]['#markup']);
+      } else {
+        $teaser = '';
+      }
+    }
+    
+    // TODO: Create admin interface to modify fb:admins, fb:app_id, and og:site_name
+    // TODO: Removed comments for fb:app_id before official launch of website. This is commented out for debugging purposes on dev server.
+    $elements = array(
+      'fb_admins' => array(
+        '#tag' => 'meta',
+        '#attributes' => array(
+          'property' => 'fb:admins',
+          'content' => 515158598,
+        ),
+      ),
+      /*'fb_app_id' => array(
+        '#tag' => 'meta',
+        '#attributes' => array(
+          'property' => 'fb:app_id',
+          'content' => 108851635827823,
+        ),
+      ),*/
+      'og_site_name' => array(
+        '#tag' => 'meta',
+        '#attributes' => array(
+          'property' => 'og:site_name',
+          'content' => 'Straight.com',
+        ),
+      ),
+      'og_title' => array(
+        '#tag' => 'meta',
+        '#attributes' => array(
+          'property' => 'og:title',
+          'content' => $title,
+        ),
+      ),
+      'og_description' => array(
+        '#tag' => 'meta',
+        '#attributes' => array(
+          'property' => 'og:description',
+          'content' => $teaser,
+        ),
+
+      ),
+      'og_type' => array(
+        '#tag' => 'meta',
+        '#attributes' => array(
+          'property' => 'og:type',
+          'content' => $node->type,
+        ),
+      ),
+    );
+    
+    // Get list of media and store the images for social media.
+    if($mediacollection = field_get_items('node', $node, 'field_mediacollection')) {
+      $ids = array();
+      
+      foreach ($mediacollection as $media) {
+        if (is_numeric($media['value'])) {
+          $ids[] = $media['value'];
+        }
+      }
+      
+      if (array_sum($ids)) {
+        $mediacollection = entity_load('field_collection_item', $ids);
+        $images = array();
+        
+        foreach ($mediacollection as $entity) {
+          if ($media = field_get_items('field_collection_item', $entity, 'field_media')) {
+            $media_uri = $media[0]['uri'];
+            $style = array(
+              'cropped' => 'article_sidebar_thumbnail',
+              'full' => 'medium',
+            );
+            // Check if there is a cropped image available.
+            if ($crop_data = field_get_items('field_collection_item', $entity, 'field_crop_data')) {
+              $crop_data = unserialize($crop_data[0]['value']);
+              if (isset($crop_data['uri'][$style['cropped']])) {
+                // Check if it's the selected thumbnail and put it at the top of the array.
+                $selected = field_get_items('field_collection_item', $entity, 'field_thumbnailselected');
+                if ($selected[0]['value']) {
+                  array_unshift($images, image_style_url($style['cropped'], $media_uri));
+                }
+                else {
+                  $images[] = image_style_url($style['cropped'], $media_uri);
+                }
+                continue;
+              }
+            }
+            if ($filemime = strstr($media[0]['filemime'], 'image')) {
+              $images[] = image_style_url($style['full'], $media_uri);
+            }
+          }
+        }
+      }
+    }
+    
+    // If there's no images, use Wuxtry.
+    if (empty($images)) {
+      $elements['og_image'] = array(
+        '#tag' => 'meta',
+        '#attributes' => array(
+          'property' => 'og:image',
+          'content' => '/' . drupal_get_path('theme', 'gs') . '/img/misc/wuxtry_black.png'
+        )
+      );
+    }
+    else {
+      foreach ($images as $key => $image) {
+        $elements['og_image_' . $key] = array(
+          '#tag' => 'meta',
+          '#attributes' => array(
+            'property' => 'og:image',
+            'content' => $image,
+          )
+        );
+      }
+    }
+    
+    foreach ($elements as $key => $element) {
+      drupal_add_html_head($element, $key);
+    }
+  }
+}
+
+/**
+ * Implements hook_filter().
+ *
+ * Filter option to enable Twitter Widget filter [gs_twitter:title:type:#hashtag:#target:radius]
+ */
+function gs_socialmedia_filter_info() {
+  $filters['gs_socialmedia_twitter_filter'] = array(
+    'title' => t('GS Social Media Twitter filter'),
+    'description' => t('Substitutes [gs_twitter:feed_type:feed_query:destination_to_follow:search_radius] with the Twitter Feed Widget script.'),
+    'process callback' => '_gs_socialmedia_substitute_twitter_tags',
+    'tips callback'  => '_gs_socialmedia__twitter_filter_tips',
+  );
+  return $filters;
+}
+
+/**
+ * Filter tips callback for gs_socialmedia_filter_info.
+ */
+function _gs_socialmedia__twitter_filter_tips($filter, $format, $long = FALSE) {
+  return t('You may use [gs_twitter:feed_type:feed_query:destination_to_follow:title_of_widget:search_radius] to display Twitter Feed Widget within your content. Example: [gs_twitter:user:vanhappenings:vanhappenings]');
+}
+
+/**
+ * Replace all [gs_twitter] tags with Twitter Widget.
+ *
+ * @param object $text
+ *   The text to process.
+ *
+ * @return string
+ *   The processed content of the given text.
+ */
+function _gs_socialmedia_substitute_twitter_tags($text) {
+  if (preg_match("/\[(gs_twitter):(.+?)\]/i", $text, $match)) {
+    $parameters = explode(':', $match[2]);
+    
+    $output = theme('gs_socialmedia_twitter', $parameters);
+    
+    return str_replace($match[0], $output, $text);
+  }
+  return $text;
+}
+
+/**
+ * Theme function for Twitter Widget
+ * 
+ * Default: showTweets("user", "vanhappenings", "vanhappenings"); setInterval("tweetScroll()", 6000);
+ * [gs_twitter:feed_type:feed_query:destination_to_follow:title_of_widget:search_radius]
+ */
+function theme_gs_socialmedia_twitter($variables) {
+  if (isset($variables[0]))
+    $type = $variables[0];
+    
+  if (isset($variables[1]))
+    $query = $variables[1];
+    
+  if (isset($variables[2]))
+    $destination = $variables[2];
+    
+  if (isset($variables[3]) && htmlspecialchars_decode($variables[3]) != '<none>')
+     $title = $variables[3];
+      
+  if (isset($variables[4]))
+    $radius = $variables[4];
+  
+  drupal_add_js(drupal_get_path('module', 'gs_socialmedia') . '/js/gs_socialmedia.twitter.js', array('scope' => 'footer'));
+  drupal_add_js('jQuery(document).ready(function() { showTweets("' . $type . '", "' . $query . ((!empty($radius)) ? ('", "' . $radius) : '') . '"); setInterval("tweetScroll()", 6000); });', 'inline');
+  
+  if (empty($title) && strpos($destination, '/') === FALSE) {
+    $title = $destination;
+  }
+  
+  // Strip @ from @handles
+  $destination = preg_replace('#@([\d\w]+)#', '$1', $destination);
+  // Change #hastag into proper search query
+  $destination = preg_replace('/#([\d\w]+)/', 'search?q=%23$1', $destination);
+  
+  $output =  '<div class="twitter-widget">';
+  if (htmlspecialchars_decode($title) != '<hide>') {
+    $output .= '<h2>Twitter' . (empty($title) ? '' : '<span class="title">' . $title . '</span>') . ' <span class="follow"><a href="http://twitter.com/' . $destination . '" target="_blank">Follow</a></span></h2>';
+  }
+  $output .= '<div id="tweeter"></div>';
+  $output .= '</div>';
+  
+  return $output;
+}
+
+/*************************************************************
+        DISPLAY SUITE HOOKS
+*************************************************************/
+
+/**
+ * Implementation of hook_ds_fields_info();
+ */
+function gs_socialmedia_ds_fields_info($entity_type) {
+  $data = array();
+
+  if ($entity_type == 'node') {
+    $data[$entity_type]['gs_socialmedia_node_top'] = array(
+      'title' => t('Articles - Top Social Media Bar'),
+      'field_type' => DS_FIELD_TYPE_THEME,
+      'ui_limit' => array(
+        'article|*',
+      ),
+      'properties' => array(
+        'default' => array(
+          'wrapper' => 'div',
+          'link' => 0,
+        ),
+        'formatters' => array(
+          'gs_socialmedia_node_top' => t('Default'), 
+        ),
+      )
+    );
+    $data[$entity_type]['gs_socialmedia_node_btm'] = array(
+      'title' => t('Articles/Blogs - Bottom Social Media Bar'),
+      'field_type' => DS_FIELD_TYPE_THEME,
+      'ui_limit' => array(
+        'article|*',
+        'blog_post|*',
+      ),
+      'properties' => array(
+        'default' => array(
+          'wrapper' => 'div',
+          'link' => 0,
+        ),
+        'formatters' => array(
+          'gs_socialmedia_node_btm' => t('Default'), 
+        ),
+      )
+    );
+    $data[$entity_type]['gs_socialmedia_gossip'] = array(
+      'title' => t('Confession/I Saw You - Social Media Bar'),
+      'field_type' => DS_FIELD_TYPE_THEME,
+      'ui_limit' => array(
+        'confession|*',
+        'i_saw_you|*',
+      ),
+      'properties' => array(
+        'default' => array(
+          'wrapper' => 'div',
+          'link' => 0,
+        ),
+        'formatters' => array(
+          'gs_socialmedia_gossip' => t('Default'), 
+        ),
+      )
+    );
+    $data[$entity_type]['gs_socialmedia_classified'] = array(
+      'title' => t('Classified/Contest - Social Media Bar'),
+      'field_type' => DS_FIELD_TYPE_THEME,
+      'ui_limit' => array(
+        'content_classified_ad|*',
+        'contest|*',
+      ),
+      'properties' => array(
+        'default' => array(
+          'wrapper' => 'div',
+          'link' => 0,
+        ),
+        'formatters' => array(
+          'gs_socialmedia_classified' => t('Default'), 
+        ),
+      )
+    );
+  }
+
+  return $data;
+}
+
+/**
+ * Implementation of hook_theme();
+ */
+function gs_socialmedia_theme($existing, $type, $theme, $path) {
+  $data = array();
+  
+  $data = array(
+    'gs_socialmedia_node_btm' => array(
+       'variables' => array(),
+    ),
+    'gs_socialmedia_node_top' => array(
+       'variables' => array(),
+    ),
+    'gs_socialmedia_gossip' => array(
+      'variables' => array(),
+    ),
+    'gs_socialmedia_classified' => array(
+      'variables' => array(),
+    ),
+    'gs_socialmedia_twitter' => array(
+      'variables' => array(),
+    ),
+  );
+  
+  return $data;
+}
+
+function theme_gs_socialmedia_node_top($vars) {
+  return token_replace(token_replace('[widgets:ws-gs-share-article]'), array('node' => $vars['entity']));
+}
+
+function theme_gs_socialmedia_node_btm($vars) {
+  return token_replace(token_replace('[widgets:ws-gs-share-article-bottom]'), array('node' => $vars['entity']));
+}
+
+function theme_gs_socialmedia_gossip($vars) {
+  return token_replace(token_replace('[widgets:ws-gs-share-gossip]'), array('node' => $vars['entity']));
+}
+
+function theme_gs_socialmedia_classified($vars) {
+  return token_replace(token_replace('[widgets:ws-gs-share-classified]'), array('node' => $vars['entity']));
+}
+
+/*************************************************************
+        HELPERS
+*************************************************************/
+
+/**
+ * Sorts a 2-dimensional array by a specific field.
+ *
+ * @param array $data
+ *     The array you want to sort
+ * @param string $field
+ *     The field you want to sort by
+ *
+ * @return array
+ *    Returns the array sorted by $field
+ */
+function _gs_socialmedia_sortby($data, $field) {
+  $code = "return strnatcmp(\$a['$field'], \$b['$field']);";
+  usort($data, create_function('$a, $b', $code));
+  return $data;
+}

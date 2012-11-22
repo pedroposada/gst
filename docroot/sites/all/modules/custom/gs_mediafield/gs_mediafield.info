@@ -1,0 +1,10 @@
+; id$
+
+name = GS Media Field
+description = Custom media field.
+project = "gs_mediafield"
+package = "custom"
+version = "7.x-1.0"
+core = "7.x"
+
+dependencies[] = field_ui

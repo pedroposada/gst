@@ -1,0 +1,7 @@
+name = GS Breadcrumb
+description = Custom breadcrumb for Georgia Straight Home > Section > Topic.
+project = "gs_breadcrumb"
+package = "custom"
+version = "7.x-1.0"
+core = "7.x"
+dependencies[] = gs_tokens

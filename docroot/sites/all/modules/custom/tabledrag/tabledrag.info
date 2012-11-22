@@ -1,0 +1,7 @@
+name = Tabledrag
+description = Provides API to render draggable tables in forms.
+core = 7.x
+php = 5.2
+files[] = tabledrag.module
+version = "7.x-1.0"
+

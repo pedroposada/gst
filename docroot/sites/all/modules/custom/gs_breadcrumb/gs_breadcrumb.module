@@ -1,0 +1,148 @@
+<?php
+
+function gs_breadcrumb_page_alter(&$page) {
+  $options = array('attributes' => array('class' => 'active'));
+  
+  if (path_is_admin(current_path())) {
+    return;
+  }
+  
+  if (current_path() == 'polls') {
+    $breadcrumb[] = l(t('Home'), NULL);
+    $breadcrumb[] = t('Polls');
+  }
+  elseif ($node = menu_get_object('node')) {
+    switch ($node->type) {
+      case 'article':
+        // Generate the home breadcrumb.
+        $breadcrumb[] = l(t('Home'), NULL);
+        // Get taxonomy terms from node
+        $terms = field_get_items('node', $node, 'field_section');
+        // Some articles that were imported were missing the top most parent term in the field_section.
+        // Resolving this by taking the last most child term and getting the taxonomy tree from drupal.
+        $terms = array_reverse(taxonomy_get_parents_all(end(end($terms))));
+        
+        // The breadcrumb only needs top most parent term for the Section and the last term for the Topic
+        // In the event that they are the one and the same, we remove duplicate terms.
+        $breadcrumb_terms[] = reset($terms);
+        $breadcrumb_terms[] = end($terms);
+        // I wrote this line to be more flexible in the future when we want to include more than just 2 levels in the breadcrumb.
+        $breadcrumb_terms = array_map("unserialize", array_unique(array_map("serialize", $breadcrumb_terms)));
+        // Generate the term breadcrumb.
+        foreach ($breadcrumb_terms as $key => $term) {
+          // Check if term is a mapped section.
+          if ($section = _gs_breadcrumb_section_tid_map_search($term->tid)) {
+            if ($key === 0) {
+              $section = array_shift(array_values(explode('/', $section)));
+            }
+            $breadcrumb[] = l(_gs_breadcrumb_get_menu_title_from_path($section), $section);
+          }
+          else {
+            $term_data = taxonomy_term_load($term->tid);
+            $uri = entity_uri('taxonomy_term', $term_data);
+            $breadcrumb[] = l(check_plain($term_data->name), $uri['path'], $options);
+          }
+        }
+        break;
+    case 'issue':
+      // Generate the home breadcrumb.
+      $breadcrumb[] = l(t('Home'), NULL);
+      // Generate the Back Issues breadcrumb.
+      $breadcrumb[] = l(t('Back Issues'), 'backissues');
+      $issue_id = field_get_items('node', $node, 'field_issue_id');
+      // Generate the Issue ID breadcrumb.
+      $breadcrumb[] = '<span class="issue-node-title active">Issue ' . $issue_id[0]['value'] . '</div>';
+      break;
+    case 'content_classified_ad':
+      $terms = field_get_items('node', $node, 'field_class_tax');
+      
+      foreach ($terms as $key => $term) {
+        $term = taxonomy_term_load($term['tid']);
+        
+        // Check the parent term to determine which landing page to lead to.
+        if ($key === 0) {
+          if (in_array($term->tid, array(673, 674))) {
+            $breadcrumb[] = l(t('Adult Classifieds'), 'classifieds/adult');
+          }
+          else {
+            $breadcrumb[] = l(t('Classifieds'), 'classifieds');
+          }
+        }
+        
+        $breadcrumb[] = l($term->name, 'taxonomy/term/' . $term->tid);
+      }
+      break;
+    }
+  }
+  
+  if (isset($breadcrumb)) {
+    drupal_set_breadcrumb($breadcrumb);
+  }
+}
+
+function gs_breadcrumb_menu_breadcrumb_alter(&$active_trail, $item) {
+  if (path_is_admin(current_path())) {
+    return;
+  }
+  // General case, we want Home // Page Title as breadcrumb.
+  if (count($active_trail) > 2) {
+    $breadcrumb[] = reset($active_trail);
+    $breadcrumb[] = end($active_trail);
+    $active_trail = $breadcrumb;
+  }
+}
+
+/*************************************************************
+        HELPERS
+*************************************************************/
+
+/**
+ * Gets the path of a sectiong by searching the data passed from _gs_helper_section_tid_map() and returns the key.
+ *
+ * @param $tid
+ *     The term id you are searching for
+ * @param $only_parent
+ *     If true, the parent section is returned
+ *
+ * @return string
+ *    Returns the key value, and false if none is found
+ */
+function _gs_breadcrumb_section_tid_map_search($tid, $only_parent = FALSE) {
+  $section_map = _gs_helper_section_tid_map();
+
+  $to_search = array(
+    'tid' => array(
+      '0' => $tid,
+    ),
+  );
+ 
+  foreach ($section_map as $key => $value) {
+    $exists = TRUE;
+    
+    foreach ($to_search as $skey => $svalue) {
+      $exists = ($exists && isset($section_map[$key][$skey]) && $section_map[$key][$skey] == $svalue);
+    }
+    if ($exists) {
+      if ($only_parent) {
+        $key = array_shift(array_values(explode('/', $key)));
+      }
+      return $key;
+    }
+  }
+ 
+  return FALSE;
+}
+
+/**
+ * Gets the menu name based on the path
+ *
+ * @param $path
+ *     The path of the menu item
+ *
+ * @return string
+ *
+ */
+function _gs_breadcrumb_get_menu_title_from_path($path) {
+  $results = db_query('SELECT link_title FROM {menu_links} WHERE link_path = :path AND module = \'menu\'', array(':path' => $path));
+  return $results->fetchField();
+}

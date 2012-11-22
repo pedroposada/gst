@@ -1,0 +1,97 @@
+<?php
+
+/*************************************************************
+        DRUPAL HOOKS
+*************************************************************/
+
+/**
+ * Implements hook_token_info().
+ */
+function gs_tokens_token_info() {
+  $info['tokens']['term']['section'] = array(
+    'name' => t('Mapped Section'),
+    'description' => t('Returns the section alias mapped to the root term. (GS Tokens)'),
+  );
+  
+  $info['tokens']['node']['section'] = array(
+    'name' => t('Mapped Section'),
+    'description' => t('Returns the section alias mapped to the root term of node. (GS Tokens)'),
+  );
+
+  return $info;
+}
+
+/**
+ * Implements hook_tokens().
+ */
+function gs_tokens_tokens($type, $tokens, array $data = array(), array $options = array()) {
+  $replacements = array();
+  
+  if ($type == 'term' && !empty($data['term'])) {
+    $term = $data['term'];
+    
+    if (isset($tokens['section'])) {
+      $parents = taxonomy_get_parents_all($term->tid);
+      $root_term = end($parents);
+      $replacements[$tokens['section']] = _gs_tokens_section_tid_map_search($root_term->tid);
+    }
+  }
+  
+  if ($type == 'node' && !empty($data['node'])) {
+    $node = $data['node'];
+    
+    if (isset($tokens['section'])) {
+      // Get taxonomy terms from node
+      $terms = field_get_items('node', $node, 'field_section');
+      // Some articles that were imported were missing the top most parent term in the field_section.
+      // Resolving this by taking the last most child term and getting the taxonomy tree from drupal.
+      $terms = array_reverse(taxonomy_get_parents_all(end(end($terms))));
+      $term = reset($terms);
+      
+      $replacements[$tokens['section']] = _gs_tokens_section_tid_map_search($term->tid);
+    }
+  }
+  
+  return $replacements;
+}
+
+/*************************************************************
+        HELPERS
+*************************************************************/
+
+/**
+ * Gets the path of a section by searching the data passed from _gs_helper_section_tid_map() and returns the key.
+ *
+ * @param $tid
+ *     The term id you are searching for
+ * @param $only_parent
+ *     If true, the parent section is returned
+ *
+ * @return string
+ *    Returns the key value, and false if none is found
+ */
+function _gs_tokens_section_tid_map_search($tid, $only_parent = FALSE) {
+  $section_map = _gs_helper_section_tid_map();
+
+  $to_search = array(
+    'tid' => array(
+      '0' => $tid,
+    ),
+  );
+ 
+  foreach ($section_map as $key => $value) {
+    $exists = TRUE;
+    
+    foreach ($to_search as $skey => $svalue) {
+      $exists = ($exists && isset($section_map[$key][$skey]) && $section_map[$key][$skey] == $svalue);
+    }
+    if ($exists) {
+      if ($only_parent) {
+        $key = array_shift(array_values(explode('/', $key)));
+      }
+      return $key;
+    }
+  }
+ 
+  return FALSE;
+}

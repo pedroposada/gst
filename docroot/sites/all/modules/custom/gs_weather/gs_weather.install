@@ -1,0 +1,43 @@
+<?php
+
+
+/**
+ * @file
+ * Install, update and uninstall functions for the block module.
+ */
+
+/**
+ * Implements hook_schema().
+ */
+function gs_weather_schema() {
+  $schema['weather_rss_data'] = array(
+    'description' => 'Stores rss feed.',
+    'fields' => array(
+      'source' => array(
+        'type' => 'text',
+        'not null' => TRUE,
+        'description' => 'Title of feed',
+      ),
+      'timestamp' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => 'timestamp of latest import.',
+      ),
+      'rss' => array(
+        'type' => 'text',
+        'not null' => TRUE,
+        'description' => 'Content of feed',
+      ),
+    ),
+  );
+
+  return $schema;
+}
+
+/**
+ * Implement hook_uninstall().
+ */
+function gs_weather_uninstall() {
+  drupal_uninstall_schema('weather_rss_data');
+}

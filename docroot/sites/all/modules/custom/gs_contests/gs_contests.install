@@ -1,0 +1,303 @@
+<?php
+
+/**
+ * @file
+ * Installation file for GS Contest module.
+ */
+
+/**
+ * Implements hook_schema().
+ */
+function gs_contests_schema() {
+  $schema = array();
+  
+  $schema['gs_contests_entries'] = array(
+    'description' => 'Hold general information about contest entries.',
+    'fields' => array(
+      'entry_id' => array(
+        'description' => 'The unique identifier for this contest entry.',
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'nid' => array(
+        'description' => 'The contest nid this entry belongs to.',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'sid' => array(
+        'description' => 'The submission sid of contest submission.',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'referer_sid' => array(
+        'description' => 'The submission sid this entry was referred from.',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'data' => array(
+        'description' => 'Validation data for blacklist check.',
+        'type' => 'text',
+        'not null' => FALSE,
+      ),
+    ),
+    'primary key' => array('entry_id'),
+    'indexes' => array(
+      'entry_id' => array('entry_id'),
+      'nid' => array('nid'),
+      'sid' => array('sid'),
+    ),
+  );
+  
+  $schema['gs_contests_blacklist'] = array(
+    'description' => 'Blacklisted people from entering contests.',
+    'fields' => array(
+      'bid' => array(
+        'description' => 'The unique identifier of blacklistee.',
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'name' => array(
+        'description' => 'The full name of blacklistee.',
+        'type' => 'varchar',
+        'length' => '255',
+        'not null' => FALSE,
+      ),
+      'email' => array(
+        'description' => 'The email address of blacklistee.',
+        'type' => 'varchar',
+        'length' => '255',
+        'not null' => FALSE,
+      ),
+      'phone_number' => array(
+        'description' => 'The phone number of blacklistee.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => FALSE,
+      ),
+      'reason' => array(
+        'description' => 'The reason for blacklist.',
+        'type' => 'text',
+        'not null' => FALSE,
+      ),
+      'submitted' => array(
+        'description' => 'Timestamp of when blacklistee was submitted.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'uid' => array(
+        'description' => 'The id of the user that submitted blacklistee.',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'duration' => array(
+        'description' => 'The length of time to be blacklisted.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'blacklist_end' => array(
+        'description' => 'Timestamp of when blacklistee can be removed.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+    ),
+    'primary key' => array('bid'),
+    'indexes' => array(
+      'bid' => array('bid'),
+      'email' => array('email'),
+      'phone_number' => array('phone_number'),
+      'blacklist_end' => array('blacklist_end'),
+    )
+  );
+}
+
+/**
+ * Add 'gs_contests_entries' table to store draw entries.
+ */
+function gs_contests_update_7101() {
+  // Safety check to prevent recreating the gs_contests_entries table.
+  if (db_table_exists('gs_contests_entries')) {
+    return;
+  }
+
+  $schema['gs_contests_entries'] = array(
+    'description' => 'Hold general information about contest entries.',
+    'fields' => array(
+      'entry_id' => array(
+        'description' => 'The unique identifier for this contest entry.',
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'nid' => array(
+        'description' => 'The contest nid this entry belongs to.',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'sid' => array(
+        'description' => 'The submission sid of contest submission.',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'referer_sid' => array(
+        'description' => 'The submission sid this entry was referred from.',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+    ),
+    'primary key' => array('entry_id'),
+    'indexes' => array(
+      'entry_id' => array('entry_id'),
+      'nid' => array('nid'),
+      'sid' => array('sid'),
+    )
+  );
+  db_create_table('gs_contests_entries', $schema['gs_contests_entries']);
+}
+
+/**
+ * Add 'gs_contests_blacklist' table to store blacklistees.
+ */
+function gs_contests_update_7102() {
+  // Safety check to prevent recreating the gs_contests_blacklist table.
+  if (db_table_exists('gs_contests_blacklist')) {
+    return;
+  }
+  
+  $schema['gs_contests_blacklist'] = array(
+    'description' => 'Blacklisted people from entering contests.',
+    'fields' => array(
+      'bid' => array(
+        'description' => 'The unique identifier of blacklistee.',
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'name' => array(
+        'description' => 'The full name of blacklistee.',
+        'type' => 'varchar',
+        'length' => '255',
+        'not null' => FALSE,
+      ),
+      'email' => array(
+        'description' => 'The email address of blacklistee.',
+        'type' => 'varchar',
+        'length' => '255',
+        'not null' => FALSE,
+      ),
+      'phone' => array(
+        'description' => 'The phone number of blacklistee.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => FALSE,
+      ),
+      'reason' => array(
+        'description' => 'The reason for blacklist.',
+        'type' => 'varchar',
+        'length' => '255',
+        'not null' => FALSE,
+      ),
+      'submitted' => array(
+        'description' => 'Timestamp of when blacklistee was submitted.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'uid' => array(
+        'description' => 'The id of the user that submitted blacklistee.',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'duration' => array(
+        'description' => 'The length of time to be blacklisted.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+    ),
+    'primary key' => array('bid'),
+    'indexes' => array(
+      'bid' => array('bid'),
+      'email' => array('email'),
+      'phone' => array('phone'),
+    )
+  );
+  db_create_table('gs_contests_blacklist', $schema['gs_contests_blacklist']);
+}
+
+/**
+ * Update field for 'gs_contests_blacklist' and add new field for 'gs_contests_entries'.
+ */
+function gs_contests_update_7103() {
+  if (!db_field_exists('gs_contests_entries', 'data')) {
+    db_add_field('gs_contests_entries', 'data', array(
+      'description' => 'Validation data for blacklist check.',
+      'type' => 'text',
+      'not null' => FALSE,
+    ));
+  }
+  if (db_field_exists('gs_contests_blacklist', 'reason')) {
+    db_change_field('gs_contests_blacklist', 'reason', 'reason', array(
+      'description' => 'The reason for blacklist.',
+      'type' => 'text',
+      'not null' => FALSE,
+    ));
+  }
+}
+
+/**
+ * Change 'phone' field name for 'gs_contests_blacklist'
+ */
+function gs_contests_update_7104() {
+  if (db_field_exists('gs_contests_blacklist', 'phone')) {
+    db_drop_index('gs_contests_blacklist', 'phone');
+    db_change_field('gs_contests_blacklist', 'phone', 'phone_number',
+      array(
+        'description' => 'The phone number of blacklistee.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => FALSE,
+      ),
+      array(
+        'indexes' => array('phone_number' => array('phone_number'))
+      )
+    );
+  }
+}
+
+/**
+ * Add new field for 'gs_contests_blacklist' to store when a blacklistee can be removed.
+ */
+function gs_contests_update_7105() {
+  if (!db_field_exists('gs_contests_blacklist', 'blacklist_end')) {
+    db_add_field('gs_contests_blacklist', 'blacklist_end', array(
+      'description' => 'Timestamp of when blacklistee can be removed.',
+      'type' => 'int',
+      'not null' => TRUE,
+      'default' => 0,
+    ),
+    array(
+      'indexes' => array('blacklist_end' => array('blacklist_end'))
+    ));
+  }
+}

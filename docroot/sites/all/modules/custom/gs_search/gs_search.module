@@ -1,0 +1,348 @@
+<?php
+/*********************************
+ * HOOKS
+ *********************************/
+/**
+ * Implements hook_theme()
+ */
+function gs_search_theme($existing, $type, $theme, $path) {
+  return array(
+    'gs_search_facetapi_link_active' => array(
+      'variables' => '',
+    ),
+    'gs_search_facetapi_count' => array(
+      'variables' => '',
+    ),
+    'gs_search_facetapi_tabs' => array(
+      'variables' => '',
+    ),
+    'gs_search_apachesolr_sort_link' => array(
+      'variables' => '',
+    ),
+  );
+}
+/**
+ * Implements MYMODULE_preprocess_HOOK()
+ */
+function gs_search_preprocess_search_result(&$vars) {
+  if (isset($vars['result']['node']) && in_array($vars['result']['node']->bundle, array('article','blog_post'))) {
+    $node = node_load($vars['result']['node']->entity_id);
+    $vars['byline'] = theme('gs_helper_author_date',array('entity' => $node, 'entity_type' => 'node'));
+    $vars['thumbnail'] = theme('gs_helper_node_thumbnail_universal',array(
+      'entity' => $node, 
+      'formatter_settings'=>array('image_style' => 'search_result'), 
+      'entity_type' => 'node'
+    ));
+  }
+}
+function gs_search_preprocess_facetapi_link_active(&$vars) {
+  $vars['theme_hook_suggestions'][] = 'gs_search_facetapi_link_active';
+}
+function gs_search_preprocess_facetapi_count(&$vars) {
+  $vars['theme_hook_suggestions'][] = 'gs_search_facetapi_count';
+}
+function gs_search_preprocess_apachesolr_sort_link(&$vars) {
+  $vars['theme_hook_suggestions'][] = 'gs_search_apachesolr_sort_link';
+}
+/**
+ * Implements hook_page_alter()
+ */
+function gs_search_page_alter(&$page) {
+  if (arg(0) == 'search' && in_array(arg(1), array('site','content'))) {
+    // dpm($page);
+    // unset elements
+    $content_above = '';
+    if (isset($page['content_above'])) {
+      $content_above = $page['content_above'];
+      unset($page['content_above']);
+    }
+    $preface_bottom = '';
+    if (isset($page['preface_bottom'])) {
+      $preface_bottom = $page['preface_bottom'];
+      unset($page['preface_bottom']);
+    }
+    $content_top = '';
+    if (isset($page['content_top'])) {
+      $content_top = $page['content_top'];
+      unset($page['content_top']);
+    } 
+    $search_form = $page['content']['system_main']['search_form'];
+    unset($page['content']['system_main']['search_form']);
+    $search_results = $page['content']['system_main']['search_results'];
+    unset($page['content']['system_main']['search_results']);
+    // search form
+    if (count($search_form)) {
+      $page['content']['system_main']['search_form'] = $search_form;
+      $page['content']['system_main']['search_form']['#prefix'] = '<div class="search-form-wrapper">';
+      $page['content']['system_main']['search_form']['#suffix'] = '</div>';
+    }
+    // tabs
+    if (count($preface_bottom)) {
+      $page['content']['system_main']['preface_bottom'] = $preface_bottom;
+      $page['content']['system_main']['preface_bottom']['#prefix']  = '<div class="search-tabs-wrapper">';
+      $page['content']['system_main']['preface_bottom']['#suffix']  = '</div>';
+    }
+    // sorting
+    if (count($content_above)) {
+      $page['content']['system_main']['content_above'] = $content_above;
+      $page['content']['system_main']['content_above']['#prefix']  = '<div id="sorting-wrapper" class="search-sorting-wrapper">';
+      $page['content']['system_main']['content_above']['#suffix']  = '</div>';
+    }
+    // filters
+    if (count($content_top)) {
+      $page['content']['system_main']['content_top'] = $content_top;
+      $page['content']['system_main']['content_top']['#prefix']  = '<div id="search-filters-wrapper">';
+      $page['content']['system_main']['content_top']['#prefix'] .= l(t('Advanced Search'), $_GET['q'], array(
+                        'attributes' => array('class' => array('more','collapsed')), 'fragment' => 'advanced-search'));
+      $page['content']['system_main']['content_top']['#prefix'] .= '<div id="search-filters-inner" class="hide">';
+      $page['content']['system_main']['content_top']['#suffix']  = '</div>';
+      $page['content']['system_main']['content_top']['#suffix'] .= '</div>';
+      drupal_add_js("
+        (function($) {
+          $(document).ready(function() {
+            if ($('#search-filters-inner').html().length) {
+              $('a.more','#search-filters-wrapper').bind('click',function(){
+                $('#search-filters-inner').toggleClass('show hide');
+                $(this).toggleClass('collapsed expanded');
+                return false;
+              })
+            } else {
+              $('a.more','#search-filters-wrapper').hide();
+            }
+          });
+        })(jQuery);
+      ",'inline'
+      );
+    }
+    // results
+    $page['content']['system_main']['search_results'] = $search_results;
+    $page['content']['system_main']['search_results']['#prefix'] = '<div class="search-results-wrapper">';
+    $page['content']['system_main']['search_results']['#suffix'] = '</div>';
+  }
+}
+/**
+ * Implements hook_apachesolr_query_prepare()
+ */
+function gs_search_apachesolr_query_prepare($query) {
+  // Remove sorts
+  $query->removeAvailableSort('sort_label');
+  $query->removeAvailableSort('bundle');
+  $query->removeAvailableSort('sort_name');
+  
+  // Rename sorts
+  $query->removeAvailableSort('score');
+  $query->setAvailableSort('score', array('title' => t('Relevance'), 'default' => 'desc'));
+}
+/**
+* Implements hook_facetapi_widgets()
+*/
+function gs_search_facetapi_widgets() {
+  return array(
+    'section_select' => array(
+      'handler' => array(
+        'label' => t('Select List'),
+        'class' => 'GSSectionFacetapiWidgetSelect',
+        'query types' => array('term','date'),
+      ),
+    ),
+    'section_tabs' => array(
+      'handler' => array(
+        'label' => t('Tabs'),
+        'class' => 'GSSectionFacetapiWidgetTabs',
+        'query types' => array('term','date'),
+      ),
+    ),
+  );
+}
+/**
+ * Implements FacetapiWidget
+ */
+class GSSectionFacetapiWidgetSelect extends FacetapiWidget {
+   /**
+   * Renders the form.
+   */
+  public function execute() {
+    $element = &$this->build[$this->facet['field alias']];
+    $element = drupal_get_form('gs_search_facetapi_select', $element, $this->facet['label']);
+    // $element = array('#markup' => drupal_render(drupal_get_form('gs_search_facetapi_select', $element, $this->facet['label'])));
+    // dpm($elements);
+  }
+}
+class GSSectionFacetapiWidgetTabs extends FacetapiWidget {
+   /**
+   * Renders the tabs.
+   */
+  public function execute() {
+    $element = &$this->build[$this->facet['field alias']];
+    $variables = array('elements'=>$element);
+    $element = array('#markup' => theme('gs_search_facetapi_tabs',$variables));
+  }
+}
+/**
+ * Implements hook_form_alter()
+ */
+function gs_search_form_alter(&$form, &$form_state, $form_id) {
+  if ($form_id == 'search_form') {
+    if (isset($form['basic']['keys'])) {
+        unset($form['basic']['keys']['#title']);
+    }
+    if (isset($form['basic']['apachesolr_search']) && isset($form['basic']['apachesolr_search']['retain-filters'])) {
+        unset($form['basic']['apachesolr_search']['retain-filters']);
+    }
+  }
+}
+/*************************
+ * FORMS
+ *************************/
+/**
+ * Generate form for facet.
+ */
+function gs_search_facetapi_select($form, &$form_state, $elements, $facetLabel = NULL) {
+  $form = array();
+  // Build options from facet elements.
+  $facetLabel = $facetLabel == 'Byline' ? 'Author' : $facetLabel;
+  $options = array('' => t("- @label -", array('@label'=>$facetLabel)));
+  foreach ($elements as $element) {
+    if ($facetLabel === 'Author' && preg_match('#^\d+$#', $element['#markup'])) {
+      continue;
+    }
+    if ($element['#active']) {
+      $dv = serialize($element['#query']);
+      // continue;
+    }
+    // $options[serialize($element['#query'])] = $element['#markup'] . ' (' . $element['#count'] . ')';
+    $options[serialize($element['#query'])] = $element['#markup'];
+  }
+  $form_state['storage']['options'] = $options;
+  $form['gs_search_facet_select'] = array(
+    '#type' => 'select',
+    '#attributes' => array('class' => array('ctools-auto-submit')),
+    '#default_value' => isset($dv) ? $dv : NULL,
+    '#after_build' => array('gs_search_select_element_after_build'),
+    '#pre_render' => array('gs_search_select_element_pre_render'),
+  );
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Filter'),
+    '#attributes' => array(
+      'class' => array('ctools-use-ajax', 'ctools-auto-submit-click'),
+      'style' => 'display:none',
+    ),
+  );
+  // Lets add autosubmit js functionality from ctools.
+  $form['#attached']['js'][] = drupal_get_path('module', 'ctools') . '/js/auto-submit.js';
+  $form['#attributes']['class'][] = 'gs-search-select-facet';
+  
+  return $form;
+}
+function gs_search_facetapi_select_submit($form, &$form_state) {
+  $form_state['redirect'] = array($_GET['q'], array('query' => unserialize($form_state['values']['gs_search_facet_select'])));
+}
+function gs_search_select_element_after_build($element, &$form_state) {
+  $element['#validated'] = TRUE;
+  $element['#options'] = $form_state['storage']['options'];
+  if (!is_null($element['#default_value'])) {
+    array_shift($element['#options']);
+    $element['#options'] = array(''=>'- Reset -') + $element['#options'];
+  }
+  
+  return $element;
+}
+function gs_search_select_element_pre_render($element) {
+  // dpm($element);
+  return $element;
+}
+
+/***********************
+ * THEME FUNCTIONS
+ ***********************/
+/**
+ * override theme_facetapi_active_link
+ */
+function theme_gs_search_facetapi_link_active($variables) {
+  // Builds accessible markup.
+  // @see http://drupal.org/node/1316580
+  $accessible_vars = array(
+    'text' => $variables['text'],
+    'active' => TRUE,
+  );
+  $accessible_markup = theme('facetapi_accessible_markup', $accessible_vars);
+
+  // Sanitizes the link text if necessary.
+  $sanitize = empty($variables['options']['html']);
+  $variables['text'] = ($sanitize) ? check_plain($variables['text']) : $variables['text'];
+
+  // Adds count to link if one was passed.
+  if (isset($variables['count'])) {
+    $variables['text'] .= ' ' . theme('facetapi_count', $variables);
+  }
+
+  // Resets link text, sets to options to HTML since we already sanitized the
+  // link text and are providing additional markup for accessibility.
+  $variables['text'] .= $accessible_markup;
+  $variables['options']['html'] = TRUE;
+  // return theme_link($variables); 
+  return "<span class='active'>{$variables['text']}</span>"; 
+}
+/**
+ * override theme_facetapi_count
+ */
+function theme_gs_search_facetapi_count($variables) {
+  return '<span class="count">'.(int) $variables['count'].'</span>';
+}
+/**
+ * override theme_facetapi_count
+ */
+function theme_gs_search_apachesolr_sort_link($vars) {
+  // $icon = '';
+  // if ($vars['direction']) {
+    // $icon = ' ' . theme('tablesort_indicator', array('style' => $vars['direction']));
+  // }
+  if ($vars['active']) {
+    if (isset($vars['options']['attributes']['class'])) {
+      $vars['options']['attributes']['class'] .= ' active';
+    }
+    else {
+      $vars['options']['attributes']['class'] = 'active';
+    }
+  }
+  // return $icon . apachesolr_l($vars['text'], $vars['path'], $vars['options']);
+  return apachesolr_l($vars['text'], $vars['path'], $vars['options']);
+}
+
+/**
+ * theme_gs_search_facetapi_tabs
+ */
+function theme_gs_search_facetapi_tabs($variables) {
+  $markup = '';
+  
+  if (isset($variables['elements'])) {
+    $items = $render_array = array();
+    foreach ((array)$variables['elements'] as $element) {
+      $item = $attribs = NULL;
+      $options = array();
+      if ($element['#active']) {
+        $item['class'][] = 'active';
+        $options['attributes']['class'][] = 'active';
+        $options['attributes']['onclick'] = "return false;";
+        $attribs = drupal_attributes($options['attributes']);
+      }
+      $html = "{$element['#markup']} " . theme('facetapi_count', array('count' => $element['#count']));
+      if (isset($element['#query']) && isset($element['#query']['f'])) {
+        $options['query'] = array('f' => array(array_pop($element['#query']['f'])));
+      }
+      // $item['data'] = l($html, $_GET['q'], $options);
+      $item['data'] = '<a href="' . url($_GET['q'], $options) . '"' . $attribs . '>' . $html . '</a>';
+      $items[] = $item;
+    }
+    $markup .= '<div class="quicktabs-wrapper quicktabs-style-nostyle">';
+    $markup .= theme('item_list',array('items'=>$items, 'attributes' => array('class' => array(
+      // 'quicktabs-tabs',
+      'gs-search-tabs',
+      'quicktabs-style-nostyle',
+    ))));
+    $markup .= '</div>';
+  }
+  
+  return $markup;  
+}

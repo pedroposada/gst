@@ -1,0 +1,6 @@
+name = GS Weather
+description = Weather widget and page.
+project = "weather"
+package = "custom"
+version = "7.x-1.0"
+core = "7.x"
