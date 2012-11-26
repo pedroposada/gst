@@ -2068,10 +2068,10 @@ function _gs_helper_curl($url) {
  */
 function _gs_helper_post_tweet($tweet_text) {
   // Insert your keys/tokens
-  $consumerKey = variable_get('gs_helper_twitter_consumer_key', 'EmRAHNDsUByqt5ItZ9rxvQ');
-  $consumerSecret = variable_get('gs_helper_twitter_consumer_secret', 'z9wDw2qhonzcoTNLWu4roDuQbGSnaatjIYLK3DNYkQ');
-  $oAuthToken = variable_get('gs_helper_twitter_user_token', '52149849-pi7KDse9DzVAgJE5j0ilBijMxhLEGapnozcO6Hguv');
-  $oAuthSecret = variable_get('gs_helper_twitter_user_secret', 'N0hJ3pDz5RK6H2RsUebVGVH0hUcNLCIXqyKzcw6g');
+  $consumerKey = variable_get('gs_helper_twitter_consumer_key', '***');
+  $consumerSecret = variable_get('gs_helper_twitter_consumer_secret', '***');
+  $oAuthToken = variable_get('gs_helper_twitter_user_token', '***');
+  $oAuthSecret = variable_get('gs_helper_twitter_user_secret', '***');
   
   // Full path to twitteroauth.php (change oauth to your own path)
   module_load_include('inc', 'gs_helper', 'twitteroauth/twitteroauth');
